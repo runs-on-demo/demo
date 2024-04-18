@@ -2,6 +2,9 @@ name: Concurrency x64
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
 
 jobs:
   benchmark:
