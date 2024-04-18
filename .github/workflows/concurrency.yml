@@ -2,6 +2,7 @@ name: Concurrency x64
 
 on:
   workflow_dispatch:
+
 jobs:
   benchmark:
     strategy:
@@ -74,4 +75,4 @@ jobs:
         - index=${{strategy.job-index}}
     steps:
       - name: Hello world
-        run: echo hello
+        run: echo hello world
