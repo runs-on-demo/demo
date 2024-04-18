@@ -1,0 +1,77 @@
+name: Concurrency x64
+
+on:
+  workflow_dispatch:
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+          - runs-on,runner=2cpu-linux-x64
+    runs-on:
+      labels:
+        - ${{ matrix.runner }}
+        - index=${{strategy.job-index}}
+    steps:
+      - name: Hello world
+        run: echo hello
