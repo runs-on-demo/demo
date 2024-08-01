@@ -1,0 +1,30 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/windows.yml
+
+jobs:
+  default:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - runs-on,family=m7i,image=windows22-base-x64,env=dev
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check current dir and env variables
+        run: |
+          dir .
+          echo $env:USERNAME
+          echo $env:RUNS_ON_RUNNER_NAME
+      - name: Logs
+        run: |
+          Get-Content -Path "C:\runs-on\output.log"
+      - name: Users
+        run: |
+          Get-LocalUser | Format-Table -AutoSize Name,Enabled,PasswordLastSet
