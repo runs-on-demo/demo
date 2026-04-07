@@ -5,7 +5,7 @@ on:
 
 jobs:
   main:
-    runs-on: runs-on/family=m8a/cpu=2
+    runs-on: runs-on/family=m8a/cpu=2/env=demo
     steps:
       - uses: actions/checkout@v6
       - run: |
