@@ -1,0 +1,12 @@
+name: Linux
+
+on:
+  workflow_dispatch:
+
+jobs:
+  main:
+    runs-on: runs-on/family=m8a/cpu=2
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          echo 'hello from RunsOn runner!'
