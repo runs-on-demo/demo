@@ -1,0 +1,13 @@
+name: Hello World
+on: [push]
+jobs:
+  x64-job:
+    runs-on: codebuild-codebuild-test-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - run: |
+          echo "Hello from x64: $(uname -i) !"
+  arm64-job:
+    runs-on: codebuild-codebuild-test-${{ github.run_id }}-${{ github.run_attempt }}-arm-3.0-small
+    steps:
+      - run: |
+          echo "Hello arm64: $(uname -i) !"
