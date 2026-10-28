@@ -6,6 +6,9 @@ on:
 
 jobs:
   webhook:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5]
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm/sticky=wh:10gb
     steps: &steps
       - run: |
@@ -22,5 +25,8 @@ jobs:
           echo "run ${GITHUB_RUN_NUMBER} on $(hostname)" >> "$d/history"
           cat "$d/history"
   pool:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5]
     runs-on: v4-dev-sticky
     steps: *steps
