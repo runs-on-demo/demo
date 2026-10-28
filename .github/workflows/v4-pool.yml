@@ -8,7 +8,7 @@ jobs:
   main:
     strategy:
       matrix:
-        n: [1, 2]
+        n: [1, 2, 3, 4, 5]
     runs-on: v4-dev-warm
     steps:
       - run: |
