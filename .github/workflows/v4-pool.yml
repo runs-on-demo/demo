@@ -1,0 +1,16 @@
+name: v4 pool
+
+on:
+  push:
+    branches: [v4-test/pool]
+
+jobs:
+  main:
+    strategy:
+      matrix:
+        n: [1, 2]
+    runs-on: v4-dev-warm
+    steps:
+      - run: |
+          echo "job ${{ matrix.n }} on $(hostname) $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          sleep 30
