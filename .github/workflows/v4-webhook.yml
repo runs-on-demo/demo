@@ -1,0 +1,15 @@
+name: v4 webhook
+
+on:
+  push:
+    branches: [v4-test/webhook]
+
+jobs:
+  main:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5]
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev
+    steps:
+      - run: |
+          echo "job ${{ matrix.n }} on $(hostname) $(uname -m)"
