@@ -1,0 +1,5 @@
+runners:
+  v4arm:
+    family: [c7g, m7g]
+    cpu: [2]
+    image: ubuntu24-full-arm64
