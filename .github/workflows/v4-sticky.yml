@@ -8,7 +8,7 @@ jobs:
   webhook:
     strategy:
       matrix:
-        n: [1, 2, 3, 4, 5]
+        n: [1]
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm/sticky=wh:10gb
     steps: &steps
       - run: |
@@ -24,9 +24,10 @@ jobs:
           echo $((n+1)) > "$d/count"
           echo "run ${GITHUB_RUN_NUMBER} on $(hostname)" >> "$d/history"
           cat "$d/history"
+          sleep 90 # the controller restarts meanwhile
   pool:
     strategy:
       matrix:
-        n: [1, 2, 3, 4, 5]
+        n: [1]
     runs-on: v4-dev-sticky
     steps: *steps
