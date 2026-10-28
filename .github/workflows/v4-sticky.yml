@@ -24,7 +24,7 @@ jobs:
           echo $((n+1)) > "$d/count"
           echo "run ${GITHUB_RUN_NUMBER} on $(hostname)" >> "$d/history"
           cat "$d/history"
-          sleep 90 # the controller restarts meanwhile
+          sleep 5
   pool:
     strategy:
       matrix:
