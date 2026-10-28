@@ -10,7 +10,10 @@ jobs:
     steps: &steps
       - run: |
           d=/mnt/runs-on/stickydisk
-          ls /runs-on/ | grep -i sticky || echo "no sticky marker"
+          # As runs-on/action does: the disk may follow the job's start.
+          for i in $(seq 120); do [ -e /runs-on/stickydisk.ready ] || [ -e /runs-on/stickydisk.unavailable ] && break; sleep 1; done
+          echo "waited ${i}s"; ls /runs-on/ | grep -i sticky || echo "no sticky marker"
+          cat /runs-on/stickydisk.unavailable 2>/dev/null || true
           env | grep -i stickydisk || true
           mountpoint "$d" && df -h "$d" | tail -1
           n=$(cat "$d/count" 2>/dev/null || echo 0)
