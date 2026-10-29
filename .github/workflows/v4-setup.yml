@@ -1,0 +1,25 @@
+name: v4 host setup
+
+on:
+  push:
+    branches: ['v4-test/setup*']
+
+jobs:
+  setup:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4setup
+    steps: &steps
+      - run: |
+          env | grep -E '^RUNS_ON_|^RUNNER_TOOL_CACHE' | sort
+          cat /tmp/preinstall-ran 2>/dev/null || echo "no preinstall marker"
+          findmnt -n -o TARGET,SOURCE,FSTYPE / /tmp /home/runner /var/lib/docker /mnt/tmpfs /mnt/ephemeral 2>&1 || true
+          df -h / /tmp /home/runner /var/lib/docker | cat
+          echo "ssh: $(systemctl is-active ssh) keys: $(wc -l < ~/.ssh/authorized_keys 2>/dev/null || echo 0)"
+          cat /proc/mdstat 2>/dev/null | head -3
+          ls -ld /home/runner /tmp
+          docker run --rm hello-world >/dev/null && echo "docker ok"
+  raid:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4raid
+    steps: *steps
+  volume:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm/volume=60gb
+    steps: *steps

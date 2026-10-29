@@ -1,10 +1,18 @@
+admins: [crohr]
 runners:
   v4arm:
     family: [c7g, m7g]
     cpu: [2]
     image: ubuntu24-full-arm64
-  v4tags:
+  v4setup:
     family: [c7g, m7g]
     cpu: [2]
     image: ubuntu24-full-arm64
-    tags: ["v4-team:launch", "v4-cost=dev"]
+    extras: [tmpfs]
+    ssh: true
+    preinstall: |
+      echo "preinstall as $(whoami) on $RUNS_ON_INSTANCE_ID" | tee /tmp/preinstall-ran
+  v4raid:
+    family: [c7gd, m7gd]
+    cpu: [2]
+    image: ubuntu24-full-arm64
