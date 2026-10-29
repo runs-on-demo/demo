@@ -8,5 +8,5 @@ jobs:
           Write-Host "Hello from $env:COMPUTERNAME"
           [System.Environment]::OSVersion.VersionString
           Get-ChildItem env: | Where-Object { $_.Name -like 'RUNS_ON_*' } | Select-Object Name
-          Get-PSDrive C
+          Get-PSDrive C | Format-Table Name,Used,Free -AutoSize | Out-String; "RUNNER_TOOL_CACHE=$env:RUNNER_TOOL_CACHE"
         shell: pwsh
