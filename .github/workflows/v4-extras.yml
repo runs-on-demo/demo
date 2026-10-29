@@ -1,0 +1,30 @@
+name: v4 extras
+
+on:
+  push:
+    branches: ['v4-test/extras*']
+
+jobs:
+  cache:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4cache
+    steps:
+      - run: env | grep -E '^ACTIONS_CACHE_URL|^ACTIONS_RESULTS_URL|^RUNS_ON_MAGIC_CACHE_URL|^RUNS_ON_S3_BUCKET_CACHE' | sed 's/=.*/=set/' | sort
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: blob
+          key: v4-magic-${{ github.ref_name }}
+      - run: |
+          echo "cache hit: ${{ steps.restore.outputs.cache-hit }}"
+          if [ -f blob/data ]; then echo "restored $(cat blob/run)"; sha256sum blob/data; fi
+          mkdir -p blob && head -c 50000000 /dev/urandom > blob/data && echo "${{ github.run_id }}" > blob/run
+      - if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: blob
+          key: v4-magic-${{ github.ref_name }}
+      - name: upload artifact (results proxy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-${{ github.run_attempt }}
+          path: blob/run
