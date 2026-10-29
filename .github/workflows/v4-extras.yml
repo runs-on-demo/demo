@@ -28,3 +28,14 @@ jobs:
         with:
           name: blob-${{ github.run_attempt }}
           path: blob/run
+  git-apt:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4git
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git config --system --get-all include.path
+          time git clone -q https://github.com/runs-on/action /tmp/action && git -C /tmp/action log -1 --format=%h
+          curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 600; echo
+          time sudo apt-get update -q | tail -3
+          time sudo apt-get install -y -q --reinstall jq | tail -2
+          curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 600; echo
