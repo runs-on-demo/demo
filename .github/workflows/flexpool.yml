@@ -1,0 +1,9 @@
+name: v4 flex pool
+on: push
+jobs:
+  pooled:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/pool=v4-flex
+    steps:
+      - run: |
+          echo "runner: $RUNS_ON_RUNNER_NAME instance: $RUNS_ON_INSTANCE_ID type: $RUNS_ON_INSTANCE_TYPE lifecycle: $RUNS_ON_INSTANCE_LIFECYCLE"
+          uptime
