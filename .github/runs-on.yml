@@ -12,6 +12,16 @@ runners:
     ssh: true
     preinstall: |
       echo "preinstall as $(whoami) on $RUNS_ON_INSTANCE_ID" | tee /tmp/preinstall-ran
+      echo "FROM_PREINSTALL=yes" >> "$GITHUB_ENV"
+      echo "/opt/preinstall-bin" >> "$GITHUB_PATH"
+  v4fail:
+    family: [c7g, m7g]
+    cpu: [2]
+    image: ubuntu24-full-arm64
+    preinstall: |
+      echo "about to fail"
+      false
+      echo "not reached"
   v4raid:
     family: [c7gd, m7gd]
     cpu: [2]
