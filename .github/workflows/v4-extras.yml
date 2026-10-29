@@ -39,3 +39,13 @@ jobs:
           time sudo apt-get update -q | tail -3
           time sudo apt-get install -y -q --reinstall jq | tail -2
           curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 600; echo
+  ecr-efs:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4ecr
+    steps:
+      - run: |
+          echo "ECR cache: ${RUNS_ON_ECR_CACHE:-unset}"
+          printf 'FROM public.ecr.aws/docker/library/alpine:3.20\nRUN echo ${{ github.run_id }} > /run-id\n' > Dockerfile
+          docker buildx create --use --driver docker-container >/dev/null
+          docker buildx build --cache-from type=registry,ref=$RUNS_ON_ECR_CACHE:buildcache --cache-to type=registry,ref=$RUNS_ON_ECR_CACHE:buildcache,mode=max,image-manifest=true,oci-mediatypes=true -t local/test . 2>&1 | grep -iE "cache|exporting|error" | head -20
+          findmnt -n -o TARGET,FSTYPE /mnt/efs || echo "no efs"
+          date > /mnt/efs/v4-${{ github.run_id }} && ls /mnt/efs | tail -3

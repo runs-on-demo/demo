@@ -32,6 +32,11 @@ runners:
     cpu: [2]
     image: ubuntu24-full-arm64
     extras: [git-cache, apt-cache]
+  v4ecr:
+    family: [c7g, m7g]
+    cpu: [2]
+    image: ubuntu24-full-arm64
+    extras: [ecr-cache, efs]
   v4raid:
     family: [c7gd, m7gd]
     cpu: [2]
