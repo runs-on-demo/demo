@@ -49,3 +49,16 @@ jobs:
           docker buildx build --cache-from type=registry,ref=$RUNS_ON_ECR_CACHE:buildcache --cache-to type=registry,ref=$RUNS_ON_ECR_CACHE:buildcache,mode=max,image-manifest=true,oci-mediatypes=true -t local/test . 2>&1 | grep -iE "cache|exporting|error" | head -20
           findmnt -n -o TARGET,FSTYPE /mnt/efs || echo "no efs"
           date > /mnt/efs/v4-${{ github.run_id }} && ls /mnt/efs | tail -3
+  pool:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/pool=v4-dev
+    steps:
+      - run: echo "pool job on $RUNS_ON_INSTANCE_TYPE ($RUNS_ON_INSTANCE_LIFECYCLE), archive cache ${ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE:-unset}"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+  oom:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm
+    steps:
+      - run: swapon --show; free -m
+      - run: python3 -c "x=[b'\x01'*(1<<30) for _ in range(16)]" || echo "killed as expected"
