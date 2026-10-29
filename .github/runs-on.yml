@@ -3,3 +3,8 @@ runners:
     family: [c7g, m7g]
     cpu: [2]
     image: ubuntu24-full-arm64
+  v4tags:
+    family: [c7g, m7g]
+    cpu: [2]
+    image: ubuntu24-full-arm64
+    tags: ["v4-team:launch", "v4-cost=dev"]
