@@ -7,7 +7,7 @@ on:
 
 jobs:
   pool:
-    runs-on: runs-on/fleet=v4-dev-runner/env=v4dev
+    runs-on: runs-on/fleet=v4-dev-runner/env=dev
     steps:
       - run: |
           echo "type $RUNS_ON_INSTANCE_TYPE ($RUNS_ON_INSTANCE_LIFECYCLE), ami $RUNS_ON_AMI_ID"
