@@ -10,7 +10,7 @@ jobs:
       matrix:
         a: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         b: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    runs-on: v4-dev
+    runs-on: runs-on/fleet=v4-dev/env=dev
     steps:
       - run: |
           echo "job ${{ matrix.a }}.${{ matrix.b }} on $(hostname) $(uname -m)"
