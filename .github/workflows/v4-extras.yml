@@ -57,6 +57,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: |
+          sudo journalctl -u runs-on-sandboxd -o cat | grep -iE 'archive|hand|local server|extra' | cut -c1-300 | tail -15
+          sudo ls -la /opt/actionarchivecache | head
   oom:
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm
     steps:
