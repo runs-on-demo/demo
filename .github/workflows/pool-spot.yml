@@ -1,0 +1,15 @@
+# v4: spot recovery on a Fleet pool (scale set). Attempt 1 fails after its
+# instance is reported interrupted; the rerun should land on on-demand.
+name: v4 pool spot
+
+on:
+  push:
+    branches: ['v4-test/pool-spot*']
+
+jobs:
+  pool:
+    runs-on: runs-on/fleet=v4-dev-runner/env=dev
+    steps:
+      - run: |
+          echo "attempt $GITHUB_RUN_ATTEMPT on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_LIFECYCLE)"
+          if [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then sleep 120; exit 1; fi
