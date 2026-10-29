@@ -1,0 +1,28 @@
+# v4: a Fleet pool with a v3 Fleet runner definition (fleet.runners)
+name: v4 pool runner
+
+on:
+  push:
+    branches: ['v4-test/pool-runner*']
+
+jobs:
+  pool:
+    runs-on: runs-on/fleet=v4-dev-runner/env=v4dev
+    steps:
+      - run: |
+          echo "type $RUNS_ON_INSTANCE_TYPE ($RUNS_ON_INSTANCE_LIFECYCLE), ami $RUNS_ON_AMI_ID"
+          df -h / | tail -1
+          cat /tmp/pool-preinstall || echo "no preinstall"
+          git config --system --get-all include.path || echo "no git cache"
+          env | grep -E '^ACTIONS_CACHE_URL|^RUNS_ON_MAGIC_CACHE_URL' | sed 's/=.*/=set/' | sort
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: blob
+          key: v4-pool-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - run: mkdir -p blob && head -c 1000000 /dev/urandom > blob/data
+      - uses: actions/cache/save@v4
+        with:
+          path: blob
+          key: v4-pool-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - run: curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 300; echo
