@@ -1,0 +1,25 @@
+name: v4 otel
+
+on:
+  push:
+    branches: ['v4-test/otel*']
+
+jobs:
+  otel:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm/extras=otel
+    env:
+      OTEL_CLI_FAIL: "true"
+    steps:
+      - run: env | grep -E '^OTEL_' | sort
+      - run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL https://github.com/equinix-labs/otel-cli/releases/download/v0.4.5/otel-cli_0.4.5_linux_arm64.tar.gz | tar -xz -C "$RUNNER_TEMP/bin" otel-cli
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: traced load
+        run: otel-cli exec --service ci-workflow --name "cpu load" -- bash -c 'timeout 40 sh -c "yes > /dev/null & yes > /dev/null & wait" || true'
+      - run: dd if=/dev/zero of=/tmp/big bs=1M count=1500 oflag=direct status=none && rm /tmp/big
+  plain:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm
+    steps:
+      - run: env | grep -E '^OTEL_' || echo "no OTEL env, as expected"
+      - run: sleep 20
