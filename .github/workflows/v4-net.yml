@@ -1,0 +1,18 @@
+# v4 network test: IPv6, the runner's work folder.
+name: v4 net
+
+on:
+  push:
+    branches: ['v4-test/net*']
+
+jobs:
+  net:
+    strategy:
+      matrix:
+        private: [false, true]
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=2cpu-linux-x64/private=${{ matrix.private }}
+    steps:
+      - run: pwd; echo "$GITHUB_WORKSPACE"; test "$GITHUB_WORKSPACE" = "/home/runner/work/demo/demo"
+      - run: ip -6 addr show scope global | grep inet6
+      - run: curl -6 -sS --max-time 15 -o /dev/null -w '%{http_code} %{remote_ip}\n' https://www.google.com
+      - run: curl -4 -sS --max-time 15 https://checkip.amazonaws.com
