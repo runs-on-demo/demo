@@ -1,0 +1,13 @@
+# v4 GPU test
+name: v4 gpu
+
+on:
+  push:
+    branches: ['v4-test/gpu*']
+
+jobs:
+  gpu:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=g4dn.xlarge/image=ubuntu24-gpu-x64/spot=false
+    steps:
+      - run: nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+      - run: docker run --rm --gpus all public.ecr.aws/docker/library/ubuntu:24.04 nvidia-smi -L || echo "no container GPU"
