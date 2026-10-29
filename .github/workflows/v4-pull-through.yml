@@ -1,0 +1,27 @@
+name: v4 pull-through
+
+on:
+  push:
+    branches: ['v4-test/pull-through*']
+
+jobs:
+  pull:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm/extras=ecr-pull-through
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "registry=$RUNS_ON_ECR_PULL_THROUGH_CACHE"
+      - run: docker info --format '{{json .RegistryConfig.Mirrors}}'
+      - name: Docker Hub, unchanged names
+        run: docker pull alpine:3.20 && docker pull node:22-alpine
+      - name: Explicit path, ECR Public rule
+        run: docker pull "$RUNS_ON_ECR_PULL_THROUGH_CACHE/v4-ecr-public/docker/library/busybox:latest"
+      - name: buildx docker-container builder
+        run: |
+          cat ~/.docker/buildx/buildkitd.default.toml
+          docker buildx create --driver docker-container --name pt --use
+          docker buildx build --progress plain pt
+  plain:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm
+    steps:
+      - run: docker info --format '{{json .RegistryConfig.Mirrors}}'
+      - run: echo "registry=${RUNS_ON_ECR_PULL_THROUGH_CACHE:-unset}"
