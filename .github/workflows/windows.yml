@@ -1,12 +1,20 @@
 name: v4 windows
 on: push
 jobs:
-  windows:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows22-full-x64
+  setup:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=win/ssh=true
     steps:
       - run: |
-          Write-Host "Hello from $env:COMPUTERNAME"
-          [System.Environment]::OSVersion.VersionString
-          Get-ChildItem env: | Where-Object { $_.Name -like 'RUNS_ON_*' } | Select-Object Name
-          Get-PSDrive C | Format-Table Name,Used,Free -AutoSize | Out-String; "RUNNER_TOOL_CACHE=$env:RUNNER_TOOL_CACHE"
+          "FROM_PREINSTALL=$env:FROM_PREINSTALL"
+          if ($env:FROM_PREINSTALL -ne 'yes') { throw 'preinstall env missing' }
+          if (-not ($env:PATH -split ';' -contains 'C:\preinstall-bin')) { throw 'preinstall path missing' }
+          (Get-Service sshd).Status
+          if ((Get-Service sshd).Status -ne 'Running') { throw 'sshd not running' }
+          "keys: " + (Get-Content C:\ProgramData\ssh\administrators_authorized_keys | Measure-Object -Line).Lines
+          icacls C:\ProgramData\ssh\administrators_authorized_keys
+          Get-NetFirewallRule -Name sshd | Select-Object Name,Enabled
         shell: pwsh
+  failing-preinstall:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=winfail
+    steps:
+      - run: Write-Output "must not run"

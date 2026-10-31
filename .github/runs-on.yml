@@ -1,0 +1,17 @@
+admins: [crohr]
+runners:
+  win:
+    family: [m7a]
+    cpu: 2
+    image: windows22-full-x64
+    preinstall: |
+      Write-Output "preinstall ran as $env:USERNAME"
+      "FROM_PREINSTALL=yes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      "C:\preinstall-bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+  winfail:
+    family: [m7a]
+    cpu: 2
+    image: windows22-full-x64
+    preinstall: |
+      Write-Output "about to fail"
+      exit 3
