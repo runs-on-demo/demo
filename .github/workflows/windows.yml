@@ -5,22 +5,25 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows22-full-x64/sticky=10gb/extras=otel
     steps:
       - run: |
-          "dir=$env:RUNS_ON_STICKYDISK_DIR name=$env:RUNS_ON_STICKYDISK_NAME"
+          $ErrorActionPreference = 'Continue'
+          "::notice title=env::dir=$env:RUNS_ON_STICKYDISK_DIR ready=$env:RUNS_ON_STICKYDISK_READY_FILE unavailable=$env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE name=$env:RUNS_ON_STICKYDISK_NAME otlp=$env:OTEL_EXPORTER_OTLP_ENDPOINT"
+          trap { "::error title=step::$($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"; break }
           $deadline = (Get-Date).AddMinutes(10)
           while (-not (Test-Path $env:RUNS_ON_STICKYDISK_READY_FILE)) {
             if (Test-Path $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE) { throw ("unavailable: " + (Get-Content -Raw $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE)) }
             if ((Get-Date) -gt $deadline) { throw 'no sticky disk after 10 min' }
             Start-Sleep -Seconds 1
           }
-          Get-Volume -FilePath $env:RUNS_ON_STICKYDISK_DIR | Select-Object FileSystemLabel,FileSystem,Size,SizeRemaining | Format-List
           $m = Join-Path $env:RUNS_ON_STICKYDISK_DIR 'marker.txt'
-          if (Test-Path $m) { "restored marker: " + (Get-Content -Raw $m) } else { 'no marker: blank disk' }
+          if (Test-Path $m) { "::notice title=sticky::restored marker: " + (Get-Content -Raw $m).Trim() } else { '::notice title=sticky::no marker: blank disk' }
+          $v = Get-Volume -FilePath $env:RUNS_ON_STICKYDISK_DIR
+          "::notice title=volume::$($v.FileSystemLabel) $($v.FileSystem) size=$($v.Size) free=$($v.SizeRemaining)"
           "run ${{ github.run_id }} at $(Get-Date -Format o)" | Out-File -FilePath $m -Encoding utf8
         shell: pwsh
       - run: |
           "otlp=$env:OTEL_EXPORTER_OTLP_ENDPOINT completed-hook=$env:ACTIONS_RUNNER_HOOK_JOB_COMPLETED"
           if (-not $env:OTEL_EXPORTER_OTLP_ENDPOINT) { throw 'no OTLP endpoint' }
           $r = Invoke-WebRequest -UseBasicParsing -Method Post -ContentType 'application/json' -Body '{"resourceSpans":[]}' -Uri "$env:OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces"
-          "local OTLP receiver: $($r.StatusCode)"
+          "::notice title=otlp::local OTLP receiver: $($r.StatusCode)"
           1..3 | ForEach-Object { $x = 0; 1..2000000 | ForEach-Object { $x += $_ } }
         shell: pwsh
