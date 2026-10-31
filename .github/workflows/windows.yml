@@ -10,7 +10,22 @@ jobs:
           trap { "::error title=step::$($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"; break }
           $deadline = (Get-Date).AddMinutes(10)
           while (-not (Test-Path $env:RUNS_ON_STICKYDISK_READY_FILE)) {
-            if (Test-Path $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE) { throw ("unavailable: " + (Get-Content -Raw $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE)) }
+            if (Test-Path $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE) {
+              $ErrorActionPreference = 'Continue'
+              Get-Disk | ForEach-Object { "::warning title=disk $($_.Number)::serial=$($_.SerialNumber) style=$($_.PartitionStyle) offline=$($_.IsOffline) ro=$($_.IsReadOnly) status=$($_.OperationalStatus) size=$($_.Size)" }
+              $d = Get-Disk | Where-Object { $_.SerialNumber -like 'vol*' -and $_.Number -ne 0 } | Select-Object -First 1
+              if ($d) {
+                $n = $d.Number
+                foreach ($c in @(
+                  { if ((Get-Disk -Number $n).IsOffline) { Set-Disk -Number $n -IsOffline $false } },
+                  { if ((Get-Disk -Number $n).IsReadOnly) { Set-Disk -Number $n -IsReadOnly $false } },
+                  { if ((Get-Disk -Number $n).PartitionStyle -eq 'RAW') { Initialize-Disk -Number $n -PartitionStyle GPT | Out-Null } },
+                  { if (-not (Get-Partition -DiskNumber $n -ErrorAction SilentlyContinue | Where-Object { $_.Type -eq 'Basic' })) { New-Partition -DiskNumber $n -UseMaximumSize -AssignDriveLetter:$false | Format-Volume -FileSystem NTFS -NewFileSystemLabel stickydisk -Confirm:$false | Out-Null } },
+                  { Get-Partition -DiskNumber $n | ForEach-Object { "::warning title=part::$($_.PartitionNumber) type=$($_.Type) size=$($_.Size) paths=$($_.AccessPaths -join ';')" } }
+                )) { try { & $c -ErrorAction Stop } catch { "::error title=diag::$c => $($_.Exception.Message)" } }
+              }
+              throw ("unavailable: " + (Get-Content -Raw $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE))
+            }
             if ((Get-Date) -gt $deadline) { throw 'no sticky disk after 10 min' }
             Start-Sleep -Seconds 1
           }
