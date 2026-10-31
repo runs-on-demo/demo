@@ -1,0 +1,19 @@
+name: v4 jobs that cannot launch
+
+on:
+  push:
+    branches: ['v4-test/fail*']
+
+jobs:
+  unknown-runner:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=doesnotexist
+    steps:
+      - run: echo "must not run"
+  unknown-image:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/cpu=2/image=no-such-image
+    steps:
+      - run: echo "must not run"
+  ok:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=2cpu-linux-x64
+    steps:
+      - run: echo "runs"
