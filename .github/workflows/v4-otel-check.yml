@@ -1,0 +1,16 @@
+name: v4 otel check
+
+on:
+  push:
+    branches: [v4-test/otel-check]
+
+jobs:
+  main:
+    runs-on: runs-on/fleet=v4-dev-warm/env=dev
+    steps:
+      - run: |
+          echo "TRACEPARENT=${TRACEPARENT:-unset}"
+          curl -s -o /dev/null -w 'traces endpoint: %{http_code}\n' -XPOST http://10.1.14.128:4318/v1/traces -H 'Content-Type: application/json' -d '{}'
+          sleep 15
+          sudo journalctl -u runs-on-sandboxd --no-pager | grep -iE 'otlp|export|4318|traces|collector' | tail -20 || true
+          echo "sandboxd export errors above, if any"
