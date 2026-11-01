@@ -1,0 +1,11 @@
+name: v4 extends
+
+on:
+  push:
+    branches: [v4-test/extends]
+
+jobs:
+  main:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4arm
+    steps:
+      - run: echo "ran on $(uname -m)"

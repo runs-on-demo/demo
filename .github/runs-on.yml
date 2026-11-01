@@ -1,3 +1,4 @@
+_extends: base-config
 admins: [crohr]
 runners:
   v4arm:
