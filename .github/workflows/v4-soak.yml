@@ -1,0 +1,19 @@
+name: v4-soak
+on:
+  push:
+    branches: [v4-test/soak]
+jobs:
+  soak:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [pco1, pco2, pco3, pco4, od1, od2, cop1, cop2, pool1, pool2]
+    runs-on: >-
+      ${{ startsWith(matrix.kind, 'pco') && format('runs-on={0}/env=v4dev/family=c7g+m7g+c8g/cpu=2/image=ubuntu24-full-arm64', github.run_id)
+      || startsWith(matrix.kind, 'od') && format('runs-on={0}/env=v4dev/family=m7g.large+c7g.large/image=ubuntu24-full-arm64/spot=false', github.run_id)
+      || startsWith(matrix.kind, 'cop') && format('runs-on={0}/env=v4dev/family=c7g.large+m7g.large+c8g.large/image=ubuntu24-full-arm64/spot=cop', github.run_id)
+      || 'runs-on/fleet=v4-dev-warm/env=dev' }}
+    steps:
+      - run: |
+          echo "${{ matrix.kind }} on $(hostname)"
+          sleep 60
