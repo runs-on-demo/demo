@@ -1,18 +1,16 @@
-name: v4 orgpool
-
+name: v4-orgpool
 on:
   push:
     branches: [v4-test/orgpool]
-
 jobs:
   pool:
     strategy:
+      fail-fast: false
       matrix:
-        n: [1, 2, 3]
-    runs-on: runs-on/pool=v4-flex/env=dev
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        form: [warm, cold, old]
+    runs-on: ${{ matrix.form == 'warm' && 'runs-on/fleet=v4-flex/env=v4dev' || (matrix.form == 'cold' && format('runs-on={0}/env=v4dev/pool=v4-flex', github.run_id) || 'runs-on/pool=v4-flex/env=v4dev') }}
     steps:
-      - run: echo "pool job ${{ matrix.n }} on $(hostname), up $(cut -d' ' -f1 /proc/uptime)s"
-  flex-no-run-id:
-    runs-on: runs-on/runner=2cpu-linux-x64/env=v4dev
-    steps:
-      - run: echo "flex job on $(hostname)"
+      - run: |
+          echo "pool job ${{ matrix.n }} ${{ matrix.form }} on $(hostname), up $(cut -d' ' -f1 /proc/uptime)s"
+          sleep 20
