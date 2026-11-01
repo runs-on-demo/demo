@@ -1,0 +1,11 @@
+name: v4-nossh
+on: push
+jobs:
+  ssh-warns:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a+m7i+c7a/cpu=2/ssh=true/spot=lowest-price
+    steps:
+      - run: |
+          test ! -s /home/runner/.ssh/authorized_keys && echo "no authorized keys"
+          (systemctl is-active ssh || true)
+          TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
+          curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-life-cycle; echo
