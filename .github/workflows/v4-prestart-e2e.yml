@@ -1,8 +1,24 @@
-name: v4 MicroVM start and end
+name: v4 start time without STS
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
+  ec2:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+        rep: [1, 2, 3, 4]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/extras=s3-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: probe
+          key: sts-probe-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - run: |
+          mkdir -p probe && date > probe/at
+          docker run --rm hello-world | head -2
   microvm:
     strategy:
       fail-fast: false
