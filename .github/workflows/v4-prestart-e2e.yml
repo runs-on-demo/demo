@@ -12,7 +12,9 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/extras=s3-cache
     steps:
       - uses: actions/checkout@v4
-      - run: echo "cache url: ${ACTIONS_CACHE_URL:-none}"; docker run --rm hello-world | head -2
+      - run: |
+          echo "cache url: ${ACTIONS_CACHE_URL:-none}"
+          docker run --rm hello-world | head -2
   microvm:
     strategy:
       fail-fast: false
@@ -21,4 +23,6 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
     steps:
       - uses: actions/checkout@v4
-      - run: nproc; echo "work: $GITHUB_WORKSPACE"
+      - run: |
+          nproc
+          echo "work: $GITHUB_WORKSPACE"
