@@ -1,0 +1,25 @@
+name: v4 prestarted runner e2e
+on:
+  push:
+    branches: [v4-test/prestart]
+jobs:
+  boot:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+        variant: [plain, extras]
+        rep: [1, 2, 3, 4, 5, 6]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'arm64' && 'ami-066f219f13b4d0955' || 'ami-0fda9c0a2c3d0af37' }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
+    steps:
+      - name: Runner and extras
+        run: |
+          cat /home/runner/.runs-on-runner-release || echo 'no release file'
+          echo "cache url: ${ACTIONS_CACHE_URL:-none}"
+          env | grep -E '^(RUNS_ON_|ACTIONS_RUNNER_HOOK)' | cut -d= -f1 | sort | head -20
+          ls -la /run/runs-on-runner 2>/dev/null || echo 'no jit dir'
+      - uses: actions/cache@v4
+        if: matrix.variant == 'extras'
+        with:
+          path: /tmp/c
+          key: prestart-${{ matrix.arch }}-${{ github.run_id }}-${{ matrix.rep }}
