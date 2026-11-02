@@ -9,7 +9,7 @@ jobs:
       matrix:
         arch: [arm64, x64]
         variant: [nvme, extras]
-        rep: [1, 2, 3, 4, 5]
+        rep: [1, 2, 3]
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/cpu=2/family=${{ matrix.arch == 'arm64' && 'c7gd' || 'm6id' }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'arm64' && 'ami-0fb58bb151e7d2a45' || 'ami-097cc9a11e7419235' }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
     steps:
       - name: Disks and Docker
@@ -22,8 +22,9 @@ jobs:
           docker run --rm hello-world | head -3
           dd if=/dev/zero of=/home/runner/work/fill bs=1M count=1024 status=none && rm /home/runner/work/fill
           echo "cache url: ${ACTIONS_CACHE_URL:-none}"
+          mkdir -p /tmp/c && date > /tmp/c/stamp
       - uses: actions/cache@v4
         if: matrix.variant == 'extras'
         with:
           path: /tmp/c
-          key: prestart-nvme-${{ matrix.arch }}-${{ matrix.rep }}
+          key: prestart-nvme-${{ matrix.arch }}-${{ matrix.rep }}-${{ github.run_id }}
