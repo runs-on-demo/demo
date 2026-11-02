@@ -1,41 +1,17 @@
-name: v4 start time without STS
+name: v4 MicroVM sudo check
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
-  ec2:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [arm64, x64]
-        rep: [1, 2, 3, 4]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/extras=s3-cache
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: probe
-          key: sts-probe-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
-      - run: |
-          mkdir -p probe && date > probe/at
-          docker run --rm hello-world | head -2
   microvm:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3, 4, 5, 6, 7, 8]
+        rep: [1, 2]
     runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
     steps:
-      - uses: actions/checkout@v4
       - run: |
-          nproc
-          sudo -n true && echo "sudo ok"
-          id
-          docker run --rm hello-world | head -2
-      - name: runner files
-        run: |
-          free -m | head -2
-          for p in $(pgrep -f 'Runner.Listener|Runner.Worker'); do echo "== $(tr '\0' ' ' < /proc/$p/cmdline | cut -c1-80)"; sudo cat /proc/$p/maps | awk '$6 ~ /^\// {print $6}' | sort -u > /tmp/m.$p; wc -l < /tmp/m.$p; xargs -a /tmp/m.$p du -cbL 2>/dev/null | tail -1; done
-          cat /tmp/m.* | sort -u | xargs du -cbL 2>/dev/null | tail -1
-          R=$(dirname $(readlink -f /proc/$(pgrep -f Runner.Listener | head -1)/exe)); echo "runner bin $R"; du -sb $R $R/../externals 2>/dev/null
-          cat /tmp/m.* | sort -u | xargs du -bL 2>/dev/null | sort -rn | head -12
+          for p in 1 $(pgrep -x sandboxd) $(pgrep -f Runner.Listener | head -1) $PPID $$; do printf '%s %s ' $p "$(cat /proc/$p/comm 2>/dev/null)"; grep -E 'NoNewPrivs|^Uid' /proc/$p/status 2>/dev/null | tr '\n\t' '  '; echo; done
+          ps -eo pid,ppid,user,comm | head -25
+          ls -l /usr/bin/sudo; mount | grep -E ' / | /usr' | head
+          sudo -n true && echo "sudo ok" || { echo "sudo FAILED"; exit 1; }
