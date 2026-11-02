@@ -1,4 +1,4 @@
-name: v4 prestarted runner e2e
+name: v4 early runner e2e
 on:
   push:
     branches: [v4-test/prestart]
@@ -8,9 +8,9 @@ jobs:
       fail-fast: false
       matrix:
         arch: [arm64, x64]
-        variant: [plain, extras, old]
-        rep: [1, 2, 3, 4, 5]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.variant == 'old' && (matrix.arch == 'arm64' && 'ami-0fb58bb151e7d2a45' || 'ami-097cc9a11e7419235') || (matrix.arch == 'arm64' && 'ami-066f219f13b4d0955' || 'ami-0fda9c0a2c3d0af37') }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
+        variant: [plain, extras]
+        rep: [1, 2, 3, 4, 5, 6]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'arm64' && 'ami-0fb58bb151e7d2a45' || 'ami-097cc9a11e7419235' }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
     steps:
       - name: Runner and extras
         run: |
