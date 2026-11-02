@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         arch: [x64, arm64]
-        image: [ubuntu24, ubuntu26]
+        image: [ubuntu26]
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.image }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=${{ matrix.image }}-full-${{ matrix.arch }}
     steps:
       - name: Boot profile
@@ -26,5 +26,8 @@ jobs:
           sudo cloud-init analyze blame 2>/dev/null | head -30 || true
           echo "== sandboxd unit"
           sudo journalctl -u runs-on-sandboxd -o short-monotonic --no-pager | head -15 || true
+          echo "== rolaunch"
+          sudo journalctl -b -u rolaunch -o short-monotonic --no-pager | cut -c1-220 | head -60 || true
+          sudo cat /var/log/runs-on-rolaunch-timings* 2>/dev/null | head -40 || true
           echo "== networkd"
           sudo journalctl -b -o short-monotonic --no-pager | grep -iE "networkd|wait-online|dhcp" | head -20 || true
