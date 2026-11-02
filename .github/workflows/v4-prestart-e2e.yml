@@ -1,25 +1,20 @@
-name: v4 early assignment A/B
+name: v4 MicroVM e2e
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
-  boot:
+  microvm:
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, x64]
-        variant: [plain, extras]
-        rep: [1, 2, 3, 4, 5, 6]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'arm64' && 'ami-0fb58bb151e7d2a45' || 'ami-097cc9a11e7419235' }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
+        size: [small, large]
+        rep: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.size }}-${{ matrix.rep }}/env=v4dev/family=microvm${{ matrix.size == 'large' && '/cpu=4' || '' }}
     steps:
-      - name: Runner and extras
+      - uses: actions/checkout@v4
+      - name: Host
         run: |
-          cat /home/runner/.runs-on-runner-release || echo 'no release file'
-          echo "cache url: ${ACTIONS_CACHE_URL:-none}"
-          env | grep -E '^(RUNS_ON_|ACTIONS_RUNNER_HOOK)' | cut -d= -f1 | sort | head -20
-          ls -la /run/runs-on-runner 2>/dev/null || echo 'no jit dir'
-      - uses: actions/cache@v4
-        if: matrix.variant == 'extras'
-        with:
-          path: /tmp/c
-          key: ea-${{ matrix.arch }}-${{ github.run_id }}-${{ matrix.rep }}
+          nproc; free -g | head -2; df -h / | tail -1
+          echo "work: $GITHUB_WORKSPACE"
+          ls /run/runs-on-hooks/ || true
+          test -f /run/runs-on-hooks/ready && echo setup ready
