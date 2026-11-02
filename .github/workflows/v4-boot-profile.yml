@@ -1,33 +1,28 @@
 name: v4 boot profile
-
-# Where an EC2 sandbox's boot goes before sandboxd starts.
 on:
   push:
-    branches: ['v4-test/boot-profile*']
-
+    branches: [v4-test/boot-profile]
+  workflow_dispatch:
 jobs:
-  boot:
+  growpart:
     strategy:
       matrix:
-        arch: [x64, arm64]
-        image: [ubuntu26]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.image }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=${{ matrix.image }}-full-${{ matrix.arch }}
+        arch: [arm64]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}
     steps:
-      - name: Boot profile
+      - name: Time growpart on a loop device
         run: |
-          systemd-analyze || true
-          echo "== critical chain to sandboxd"
-          systemd-analyze critical-chain runs-on-sandboxd.service || true
-          echo "== blame"
-          systemd-analyze blame | head -30 || true
-          echo "== cloud-init"
-          command -v cloud-init || echo "no cloud-init"
-          sudo cloud-init analyze show 2>/dev/null | grep -E "Starting stage|Finished stage|took|Total Time" | head -40 || true
-          sudo cloud-init analyze blame 2>/dev/null | head -30 || true
-          echo "== sandboxd unit"
-          sudo journalctl -u runs-on-sandboxd -o short-monotonic --no-pager | head -15 || true
-          echo "== rolaunch"
-          sudo journalctl -b -u rolaunch -o short-monotonic --no-pager | cut -c1-220 | head -60 || true
-          sudo cat /var/log/runs-on-rolaunch-timings* 2>/dev/null | head -40 || true
-          echo "== networkd"
-          sudo journalctl -b -o short-monotonic --no-pager | grep -iE "networkd|wait-online|dhcp" | head -20 || true
+          set -x
+          which growpart sfdisk partx udevadm
+          head -40 $(which growpart) | grep -i version || true
+          sudo journalctl -b -u rolaunch -o short-monotonic --no-pager | grep -E "resize|growpart" | cut -c1-200
+          f=$(mktemp); truncate -s 4G $f
+          printf 'label: gpt\nsize=1G, type=linux\n' | sudo sfdisk -q $f
+          dev=$(sudo losetup -P -f --show $f); lsblk $dev
+          sudo bash -c "PS4='+ \$EPOCHREALTIME '; time bash -x $(which growpart) $dev 1" 2>&1 | awk '{print}' | grep -E '^\+ [0-9]|real|CHANGED' | cut -c1-160 | head -120
+          sudo losetup -d $dev
+          truncate -s 4G $f.2; printf 'label: gpt\nsize=1G, type=linux\n' | sudo sfdisk -q $f.2
+          dev=$(sudo losetup -P -f --show $f.2)
+          time (echo ', +' | sudo sfdisk -q --no-reread --no-tell-kernel -N 1 $dev && sudo partx -u -n 1 $dev)
+          lsblk $dev
+          sudo losetup -d $dev
