@@ -11,7 +11,16 @@ jobs:
         n: [1, 2, 3]
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.n }}/env=v4dev/family=microvm
     steps:
-      - uses: actions/checkout@v6
+      - name: Runner startup profile
+        run: |
+          pid=$(pgrep -f 'bin/Runner.Listener' | head -1)
+          read -r oncpu waitcpu _ < /proc/$pid/schedstat
+          awk -v hz=$(getconf CLK_TCK) '{printf "listener: user %.2fs sys %.2fs majflt %d minflt %d\n", $14/hz, $15/hz, $12, $10}' /proc/$pid/stat
+          echo "listener: on cpu $((oncpu/1000000)) ms, waiting for cpu $((waitcpu/1000000)) ms"
+          grep -E '^(read_bytes|rchar)' /proc/$pid/io || true
+          # The listener's own steps, with time stamps (messages cut short).
+          f=$(ls -t /home/runner/_diag/Runner_*.log | tail -1)
+          grep -E '^\[' "$f" | awk '/Listening for Jobs|GetNextMessage/{print; exit} {print}' | cut -c1-110 | head -150
       - run: |
           echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
           env | grep -E '^RUNS_ON_(INSTANCE_ID|INSTANCE_TYPE|RUNNER_NAME|STACK_NAME)=' | sort
@@ -20,6 +29,16 @@ jobs:
   large:
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm/cpu=4
     steps:
+      - name: Runner startup profile
+        run: |
+          pid=$(pgrep -f 'bin/Runner.Listener' | head -1)
+          read -r oncpu waitcpu _ < /proc/$pid/schedstat
+          awk -v hz=$(getconf CLK_TCK) '{printf "listener: user %.2fs sys %.2fs majflt %d minflt %d\n", $14/hz, $15/hz, $12, $10}' /proc/$pid/stat
+          echo "listener: on cpu $((oncpu/1000000)) ms, waiting for cpu $((waitcpu/1000000)) ms"
+          grep -E '^(read_bytes|rchar)' /proc/$pid/io || true
+          # The listener's own steps, with time stamps (messages cut short).
+          f=$(ls -t /home/runner/_diag/Runner_*.log | tail -1)
+          grep -E '^\[' "$f" | awk '/Listening for Jobs|GetNextMessage/{print; exit} {print}' | cut -c1-110 | head -150
       - run: |
           echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
           docker run --rm alpine sh -c 'echo docker in a $(uname -m) MicroVM'
