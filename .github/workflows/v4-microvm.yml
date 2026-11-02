@@ -23,3 +23,13 @@ jobs:
       - run: |
           echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
           docker run --rm alpine sh -c 'echo docker in a $(uname -m) MicroVM'
+  named:
+    strategy:
+      matrix:
+        n: [1, 2]
+    runs-on: runs-on=${{ github.run_id }}-py-${{ matrix.n }}/env=v4dev/family=microvm/image=py
+    steps:
+      - run: |
+          . /etc/os-release; echo "$PRETTY_NAME, arch $(uname -m), $(nproc) vCPU"
+          python3 /opt/hello.py
+          docker run --rm hello-world | head -2
