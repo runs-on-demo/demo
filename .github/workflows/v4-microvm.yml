@@ -1,0 +1,22 @@
+name: v4 MicroVM
+
+on:
+  push:
+    branches: ['v4-test/microvm*']
+
+jobs:
+  small:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
+          env | grep -E '^RUNS_ON_(INSTANCE_ID|INSTANCE_TYPE|RUNNER_NAME|STACK_NAME)=' | sort
+          docker run --rm hello-world | head -2
+          curl -fsS -o /dev/null -w 'internet %{http_code}\n' https://api.github.com
+  large:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm/cpu=4
+    steps:
+      - run: |
+          echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
+          docker run --rm alpine sh -c 'echo docker in a $(uname -m) MicroVM'
