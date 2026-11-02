@@ -1,0 +1,102 @@
+name: v4 startup timings
+
+# Measures where the time goes between a job being queued and its first step,
+# on v4 MicroVMs, cold EC2 launches and a hot pool. Each job saves its
+# sandbox's timing marks (.setup_info); the report job prints the breakdown.
+on:
+  push:
+    branches: ['v4-test/startup*']
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  microvm:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.n }}/env=v4dev/family=microvm
+    steps:
+      - name: Save timings
+        run: |
+          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          mkdir -p /tmp/t
+          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
+            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
+            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-${{ github.job }}-${{ strategy.job-index }}
+          path: /tmp/t/
+  ec2-x64:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5]
+    runs-on: runs-on=${{ github.run_id }}-x64-${{ matrix.n }}/env=v4dev/runner=2cpu-linux-x64
+    steps:
+      - name: Save timings
+        run: |
+          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          mkdir -p /tmp/t
+          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
+            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
+            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-${{ github.job }}-${{ strategy.job-index }}
+          path: /tmp/t/
+  ec2-arm64:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5]
+    runs-on: runs-on=${{ github.run_id }}-arm64-${{ matrix.n }}/env=v4dev/runner=2cpu-linux-arm64
+    steps:
+      - name: Save timings
+        run: |
+          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          mkdir -p /tmp/t
+          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
+            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
+            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-${{ github.job }}-${{ strategy.job-index }}
+          path: /tmp/t/
+  pool:
+    # The pool keeps one hot standby: one job at a time, with time to refill.
+    strategy:
+      max-parallel: 1
+      matrix:
+        n: [1, 2, 3]
+    runs-on: runs-on/fleet=v4-flex/env=v4dev
+    steps:
+      - name: Save timings
+        run: |
+          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          mkdir -p /tmp/t
+          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
+            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
+            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-${{ github.job }}-${{ strategy.job-index }}
+          path: /tmp/t/
+      - run: sleep 90
+  report:
+    needs: [microvm, ec2-x64, ec2-arm64, pool]
+    if: always()
+    runs-on: runs-on=${{ github.run_id }}-report/env=v4dev/runner=2cpu-linux-x64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: timings-*
+          merge-multiple: true
+          path: timings
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
+          python3 .github/scripts/startup_report.py timings jobs.json
