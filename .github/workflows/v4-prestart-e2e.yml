@@ -8,18 +8,22 @@ jobs:
       fail-fast: false
       matrix:
         arch: [arm64, x64]
-        variant: [plain, extras]
-        rep: [1, 2, 3, 4, 5, 6]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'arm64' && 'ami-0fb58bb151e7d2a45' || 'ami-097cc9a11e7419235' }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
+        variant: [nvme, extras]
+        rep: [1, 2, 3, 4, 5]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/cpu=2/family=${{ matrix.arch == 'arm64' && 'c7gd' || 'm6id' }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'arm64' && 'ami-0fb58bb151e7d2a45' || 'ami-097cc9a11e7419235' }}${{ matrix.variant == 'extras' && '/extras=s3-cache' || '' }}
     steps:
-      - name: Runner and extras
+      - name: Disks and Docker
         run: |
-          cat /home/runner/.runs-on-runner-release || echo 'no release file'
+          findmnt -no SOURCE,FSTYPE,TARGET -T /home/runner/work
+          findmnt -no SOURCE,FSTYPE,TARGET -T /tmp
+          findmnt -no SOURCE,FSTYPE,TARGET -T /var/lib/docker
+          ls /home/runner/work
+          sudo journalctl -b -u runs-on-sandboxd --no-pager | grep -iE "stripe|raid|work directories|container stores|instance-store" | cut -c1-220 || true
+          docker run --rm hello-world | head -3
+          dd if=/dev/zero of=/home/runner/work/fill bs=1M count=1024 status=none && rm /home/runner/work/fill
           echo "cache url: ${ACTIONS_CACHE_URL:-none}"
-          env | grep -E '^(RUNS_ON_|ACTIONS_RUNNER_HOOK)' | cut -d= -f1 | sort | head -20
-          ls -la /run/runs-on-runner 2>/dev/null || echo 'no jit dir'
       - uses: actions/cache@v4
         if: matrix.variant == 'extras'
         with:
           path: /tmp/c
-          key: prestart-${{ matrix.arch }}-${{ github.run_id }}-${{ matrix.rep }}
+          key: prestart-nvme-${{ matrix.arch }}-${{ matrix.rep }}
