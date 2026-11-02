@@ -1,0 +1,118 @@
+name: v4 runner ReadyToRun
+on:
+  push:
+    branches: [v4-test/runner-r2r]
+  workflow_dispatch:
+jobs:
+  r2r:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}
+    steps:
+      - name: Measure the runner's start, stock vs ReadyToRun
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v strace >/dev/null || sudo apt-get install -y -qq strace >/dev/null
+          RD=$(dirname "$(dirname "$(readlink -f "$(ls -d /home/runner/bin/Runner.Listener /actions-runner/bin/Runner.Listener 2>/dev/null | head -1)")")")
+          echo "runner dir: $RD"
+          case "$(uname -m)" in aarch64) rid=linux-arm64 tarch=arm64 ;; *) rid=linux-x64 tarch=x64 ;; esac
+          rtver=$(grep -o "runtimepack.Microsoft.NETCore.App.Runtime.$rid/[0-9.]*" "$RD/bin/Runner.Listener.deps.json" | head -1 | cut -d/ -f2)
+          echo "runtime $rtver"
+          w=$RUNNER_TEMP/r2r; mkdir -p "$w"; cd "$w"
+
+          # crossgen2 of the runner's runtime version, and a .NET runtime to run it.
+          curl -sfL -o cg.zip "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.crossgen2.$rid/$rtver/microsoft.netcore.app.crossgen2.$rid.$rtver.nupkg"
+          unzip -q cg.zip -d cg
+          CG=$w/cg/tools/crossgen2; chmod +x "$CG"
+          curl -sfL -o dotnet-install.sh https://dot.net/v1/dotnet-install.sh
+          bash dotnet-install.sh --runtime dotnet --version "$rtver" --install-dir "$w/dotnet" >/dev/null
+          export DOTNET_ROOT=$w/dotnet
+
+          cat > r2r.py <<'EOF'
+          import struct,sys
+          def r2r(p):
+              b=open(p,'rb').read()
+              pe=struct.unpack_from('<I',b,0x3c)[0]; nsec=struct.unpack_from('<H',b,pe+6)[0]; optsz=struct.unpack_from('<H',b,pe+20)[0]
+              opt=pe+24; dd=opt+(96 if struct.unpack_from('<H',b,opt)[0]==0x10b else 112)
+              rva=struct.unpack_from('<I',b,dd+14*8)[0]
+              if rva==0: return True
+              for i in range(nsec):
+                  _,vs,va,rs,rp=struct.unpack_from('<8sIIII',b,pe+24+optsz+i*40)
+                  if va<=rva<va+max(vs,rs):
+                      return struct.unpack_from('<I',b,rva-va+rp+64)[0]!=0
+              return True
+          for p in sys.argv[1:]:
+              try:
+                  if not r2r(p): print(p)
+              except Exception: pass
+          EOF
+          mkdir -p stock r2r
+          cp -a "$RD/bin" stock/bin; cp -a "$RD/bin" r2r/bin
+          n=0
+          for f in $(cd stock/bin && python3 "$w/r2r.py" *.dll); do
+            [ "$(stat -c%s "stock/bin/$f")" -gt 30000 ] || continue
+            if "$CG" -r "$w/stock/bin/*.dll" --targetos:linux --targetarch:$tarch -O "stock/bin/$f" -o "r2r/bin/$f" >cg.log 2>&1; then
+              n=$((n+1)); echo "  R2R $f $(stat -c%s stock/bin/$f) -> $(stat -c%s r2r/bin/$f)"
+            else
+              echo "  crossgen2 failed on $f: $(tail -1 cg.log)"; cp "stock/bin/$f" "r2r/bin/$f"
+            fi
+          done
+          echo "compiled $n assemblies; bin: $(du -sh stock/bin | cut -f1) -> $(du -sh r2r/bin | cut -f1)"
+
+          # A made-up JIT config: the runner signs in with it and fails.
+          openssl genrsa -out key.pem 2048 2>/dev/null
+          cat > jit.py <<'EOF'
+          import base64,json,re,subprocess
+          t=subprocess.check_output(['openssl','rsa','-in','key.pem','-text','-noout']).decode()
+          def field(name):
+              m=re.search(name+r':\s*\n((?:\s+[0-9a-f:]+\n)+)',t)
+              return bytes.fromhex(re.sub(r'[\s:]','',m.group(1))).lstrip(b'\0')
+          e=int(re.search(r'publicExponent: (\d+)',t).group(1))
+          b=lambda x: base64.b64encode(x).decode()
+          files={
+           '.runner':{'agentId':1,'agentName':'r2r-test','poolId':1,'poolName':'Default','disableUpdate':'True','ephemeral':'True','workFolder':'_work',
+             'gitHubUrl':'https://github.com/runs-on/validate','serverUrl':'https://pipelines.actions.githubusercontent.com/r2r-test',
+             'serverUrlV2':'https://broker.actions.githubusercontent.com/','useV2Flow':True},
+           '.credentials':{'scheme':'OAuth','data':{'clientId':'00000000-0000-0000-0000-000000000000',
+             'authorizationUrl':'https://vstoken.actions.githubusercontent.com/_apis/oauth2/token/00000000-0000-0000-0000-000000000000','requireFipsCryptography':'False'}},
+           '.credentials_rsaparams':{'d':b(field('privateExponent')),'dp':b(field('exponent1')),'dq':b(field('exponent2')),
+             'exponent':b(e.to_bytes(3,'big')),'inverseQ':b(field('coefficient')),'modulus':b(field('modulus')),
+             'p':b(field('prime1')),'q':b(field('prime2'))},
+          }
+          print(b(json.dumps({k:b(json.dumps(v).encode()) for k,v in files.items()}).encode()))
+          EOF
+          J=$(python3 jit.py)
+
+          # Time from exec to the runner's first network connection (DNS or
+          # HTTPS): its start, up to signing in.
+          run() { # variant mode i
+            d=$w/$1; rm -rf "$d/_diag" "$d/.runner" "$d/.credentials" "$d/.credentials_rsaparams"
+            [ "$2" = cold ] && sudo sysctl -q vm.drop_caches=3
+            local t=$w/trace.$1.$2.$3
+            env -i HOME="$d" PATH=/usr/bin:/bin LANG=C.UTF-8 strace -f -qq -ttt -e trace=execve,connect -e signal=none -o "$t" "$d/bin/Runner.Listener" run --jitconfig "$J" >/dev/null 2>&1 &
+            local pid=$!
+            for _ in $(seq 1 300); do grep -qE 'connect\(.*(AF_INET|AF_INET6)' "$t" 2>/dev/null && break; sleep 0.05; done
+            kill "$pid" 2>/dev/null; pkill -f "$d/bin/Runner" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+            python3 - "$t" "$1" "$2" <<'EOF' >> "$w/results.txt"
+          import sys,re
+          lines=open(sys.argv[1]).read().splitlines()
+          start=float(lines[0].split()[1])
+          c=[float(l.split()[1]) for l in lines if re.search(r'connect\(.*AF_INET',l)]
+          print(sys.argv[2], sys.argv[3], '%.3f'%((c[0]-start) if c else -1))
+          EOF
+          }
+          for i in 1 2 3 4 5 6 7 8; do
+            for mode in cold warm; do run stock $mode $i; run r2r $mode $i; done
+          done
+          python3 - "$w/results.txt" <<'EOF'
+          import sys,statistics as st
+          rows={}
+          for l in open(sys.argv[1]):
+              v,m,s=l.split(); s=float(s)
+              if s>0: rows.setdefault((v,m),[]).append(s)
+          for k in sorted(rows):
+              x=rows[k]; print('%-6s %-5s n=%d median %.3f s (min %.3f, max %.3f)'%(k[0],k[1],len(x),st.median(x),min(x),max(x)))
+          EOF
