@@ -1,0 +1,24 @@
+name: v4 boot with local NVMe
+on:
+  push:
+    branches: [v4-test/boot-profile-nvme]
+jobs:
+  boot:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+        variant: [stock, test]
+        rep: [1, 2]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/cpu=2/family=${{ matrix.arch == 'arm64' && 'c7gd' || 'm6id' }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'test' && (matrix.arch == 'arm64' && '/ami=ami-0fb58bb151e7d2a45' || '/ami=ami-097cc9a11e7419235') || '' }}
+    steps:
+      - name: Disks
+        run: |
+          curl -s -m 2 http://169.254.169.254/latest/meta-data/instance-type -H "X-aws-ec2-metadata-token: $(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')"; echo
+          lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL
+          df -h / /home/runner/_work /tmp | cat
+          findmnt -no SOURCE,TARGET /home/runner/_work || true
+          sudo sfdisk --verify "/dev/$(lsblk -no PKNAME "$(findmnt -no SOURCE /)")"
+          sudo journalctl -b -u rolaunch --no-pager | grep -E "resize|grown|growpart|sfdisk|partx" | cut -c1-220 || true
+          sudo journalctl -b -u runs-on-sandboxd --no-pager | grep -iE "stripe|raid|work directories|instance-store" | cut -c1-220 || true
+          dd if=/dev/zero of=/home/runner/_work/fill bs=1M count=2048 status=none && ls -la /home/runner/_work/fill && rm /home/runner/_work/fill
