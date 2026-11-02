@@ -10,7 +10,8 @@ jobs:
     strategy:
       matrix:
         arch: [x64, arm64]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}
+        image: [ubuntu24, ubuntu26]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.image }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=${{ matrix.image }}-full-${{ matrix.arch }}
     steps:
       - name: Boot profile
         run: |
@@ -20,6 +21,7 @@ jobs:
           echo "== blame"
           systemd-analyze blame | head -30 || true
           echo "== cloud-init"
+          command -v cloud-init || echo "no cloud-init"
           sudo cloud-init analyze show 2>/dev/null | grep -E "Starting stage|Finished stage|took|Total Time" | head -40 || true
           sudo cloud-init analyze blame 2>/dev/null | head -30 || true
           echo "== sandboxd unit"
