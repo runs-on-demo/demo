@@ -1,4 +1,4 @@
-name: v4 check after early assignment removal
+name: v4 Ubuntu 26 minimal vs full
 on:
   push:
     branches: [v4-test/prestart]
@@ -7,22 +7,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        variant: [minimal-stock, minimal-rolaunch, full-rolaunch]
         arch: [arm64, x64]
         rep: [1, 2, 3]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/extras=s3-cache
+        include:
+          - {variant: minimal-stock, arch: x64, ami: ami-037bed10c48fb62f6}
+          - {variant: minimal-stock, arch: arm64, ami: ami-0bc3eee024b00aa1e}
+          - {variant: minimal-rolaunch, arch: x64, ami: ami-0db238ed2e1ba0f33}
+          - {variant: minimal-rolaunch, arch: arm64, ami: ami-05ca8e0a127e2f48b}
+          - {variant: full-rolaunch, arch: x64, ami: ami-097cc9a11e7419235}
+          - {variant: full-rolaunch, arch: arm64, ami: ami-0fb58bb151e7d2a45}
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.variant }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/ami=${{ matrix.ami }}/extras=s3-cache
     steps:
       - uses: actions/checkout@v4
       - run: |
-          echo "cache url: ${ACTIONS_CACHE_URL:-none}"
+          echo "variant ${{ matrix.variant }} ami ${{ matrix.ami }}"
+          systemd-analyze || true
+          journalctl -b -u rolaunch --no-pager -o short-monotonic | tail -15 || true
           docker run --rm hello-world | head -2
-  microvm:
-    strategy:
-      fail-fast: false
-      matrix:
-        rep: [1, 2, 3, 4]
-    runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          nproc
-          echo "work: $GITHUB_WORKSPACE"
