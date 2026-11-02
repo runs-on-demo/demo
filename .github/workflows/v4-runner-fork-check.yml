@@ -8,8 +8,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [ubuntu26-full-x64, ubuntu26-full-arm64, ubuntu24-full-x64, ubuntu26-minimal-x64]
-    runs-on: runs-on=${{ github.run_id }}-${{ strategy.job-index }}/env=v4dev/cpu=2/image=${{ matrix.image }}
+        include:
+          - { image: ubuntu26-full-x64, arch: x64 }
+          - { image: ubuntu26-full-arm64, arch: arm64 }
+          - { image: ubuntu24-full-x64, arch: x64 }
+          - { image: ubuntu26-minimal-x64, arch: x64 }
+    runs-on: runs-on=${{ github.run_id }}-${{ strategy.job-index }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=${{ matrix.image }}
     steps:
       - name: Which runner build is installed
         shell: bash
