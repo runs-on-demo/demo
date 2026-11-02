@@ -1,0 +1,33 @@
+name: v4 runner fork check
+on:
+  push:
+    branches: [v4-test/runner-fork-check]
+  workflow_dispatch:
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu26-full-x64, ubuntu26-full-arm64, ubuntu24-full-x64, ubuntu26-minimal-x64]
+    runs-on: runs-on=${{ github.run_id }}-${{ strategy.job-index }}/env=v4dev/cpu=2/image=${{ matrix.image }}
+    steps:
+      - name: Which runner build is installed
+        shell: bash
+        run: |
+          RD=/home/runner
+          cat /etc/os-release | grep PRETTY
+          ls /opt/runner-cache 2>/dev/null || echo "no /opt/runner-cache"
+          for f in Runner.Worker.dll Runner.Listener.dll; do
+            printf '%s: RunsOn strings=%s sha256=%s\n' "$f" "$(grep -c -a 'RunsOn' "$RD/bin/$f")" "$(sha256sum "$RD/bin/$f" | cut -c1-16)"
+          done
+          v=$("$RD/bin/Runner.Listener" --version); echo "version $v"
+          arch=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          for tag in "v$v-runs-on.1" "v$v-runs-on.2"; do
+            url="https://github.com/runs-on/runner/releases/download/$tag/actions-runner-linux-$arch-$v.tar.gz"
+            if curl -fsSL "$url" -o /tmp/r.tgz; then
+              mkdir -p /tmp/$tag && tar -xzf /tmp/r.tgz -C /tmp/$tag bin/Runner.Worker.dll
+              echo "$tag Runner.Worker.dll sha256=$(sha256sum /tmp/$tag/bin/Runner.Worker.dll | cut -c1-16)"
+            else echo "$tag: no release"; fi
+          done
+          url="https://github.com/actions/runner/releases/download/v$v/actions-runner-linux-$arch-$v.tar.gz"
+          curl -fsSL "$url" -o /tmp/u.tgz && mkdir -p /tmp/up && tar -xzf /tmp/u.tgz -C /tmp/up bin/Runner.Worker.dll && echo "upstream v$v Runner.Worker.dll sha256=$(sha256sum /tmp/up/bin/Runner.Worker.dll | cut -c1-16)"
