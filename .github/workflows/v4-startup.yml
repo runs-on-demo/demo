@@ -1,7 +1,7 @@
 name: v4 startup timings
 
 # Measures where the time goes between a job being queued and its first step,
-# on v4 MicroVMs, cold EC2 launches and EC2. Each job saves its
+# for cold EC2 jobs that come by webhook and by a scale set (pool v4-dev, no standby). Each job saves its
 # sandbox's timing marks (.setup_info); the report job prints the breakdown.
 on:
   push:
@@ -12,44 +12,10 @@ permissions:
   contents: read
 
 jobs:
-  microvm:
-    strategy:
-      matrix:
-        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.n }}/env=v4dev/family=microvm
-    steps:
-      - name: Save timings
-        run: |
-          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
-          mkdir -p /tmp/t
-          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
-            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
-            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: timings-${{ github.job }}-${{ strategy.job-index }}
-          path: /tmp/t/
-  ec2-x64:
-    strategy:
-      matrix:
-        n: [1, 2, 3, 4, 5]
-    runs-on: runs-on=${{ github.run_id }}-x64-${{ matrix.n }}/env=v4dev/runner=2cpu-linux-x64
-    steps:
-      - name: Save timings
-        run: |
-          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
-          mkdir -p /tmp/t
-          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
-            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
-            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: timings-${{ github.job }}-${{ strategy.job-index }}
-          path: /tmp/t/
   ec2-arm64:
     strategy:
       matrix:
-        n: [1, 2, 3, 4, 5]
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     runs-on: runs-on=${{ github.run_id }}-arm64-${{ matrix.n }}/env=v4dev/runner=2cpu-linux-arm64
     steps:
       - name: Save timings
@@ -63,8 +29,25 @@ jobs:
         with:
           name: timings-${{ github.job }}-${{ strategy.job-index }}
           path: /tmp/t/
+  scaleset:
+    strategy:
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: runs-on/fleet=v4-dev/env=dev
+    steps:
+      - name: Save timings
+        run: |
+          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          mkdir -p /tmp/t
+          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
+            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
+            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-${{ github.job }}-${{ strategy.job-index }}
+          path: /tmp/t/
   report:
-    needs: [microvm, ec2-x64, ec2-arm64]
+    needs: [ec2-arm64, scaleset]
     if: always()
     runs-on: runs-on=${{ github.run_id }}-report/env=v4dev/runner=2cpu-linux-x64
     steps:

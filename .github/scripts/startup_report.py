@@ -35,6 +35,10 @@ kinds = {}
 for f in sorted(pathlib.Path(sys.argv[1]).glob("*.json")):
     rec = json.load(open(f))
     m = marks(rec)
+    # A scale set job's sandbox has no job of its own: take GitHub's queueing.
+    j = jobs.get(f"{rec['kind']} ({int(rec['index']) + 1})")
+    if "job-queued" not in m and j:
+        m["job-queued"] = ts(j["created_at"])
     kinds.setdefault(rec["kind"], []).append(m)
 
 for kind, runs in kinds.items():
