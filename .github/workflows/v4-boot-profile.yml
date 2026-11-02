@@ -10,19 +10,15 @@ jobs:
         arch: [arm64]
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}
     steps:
-      - name: Time growpart on a loop device
+      - name: Grow a GPT partition after the disk grew, with sfdisk
         run: |
           set -x
-          which growpart sfdisk partx udevadm
-          head -40 $(which growpart) | grep -i version || true
-          sudo journalctl -b -u rolaunch -o short-monotonic --no-pager | grep -E "resize|growpart" | cut -c1-200
-          f=$(mktemp); truncate -s 4G $f
-          printf 'label: gpt\nsize=1G, type=linux\n' | sudo sfdisk -q $f
+          f=$(mktemp); truncate -s 1536M $f
+          printf 'label: gpt\nfirst-lba: 2048\nsize=1G, type=linux\n' | sudo sfdisk -q $f
+          truncate -s 4G $f
           dev=$(sudo losetup -P -f --show $f); lsblk $dev
-          sudo bash -c "PS4='+ \$EPOCHREALTIME '; time bash -x $(which growpart) $dev 1" 2>&1 | awk '{print}' | grep -E '^\+ [0-9]|real|CHANGED' | cut -c1-160 | head -120
-          sudo losetup -d $dev
-          truncate -s 4G $f.2; printf 'label: gpt\nsize=1G, type=linux\n' | sudo sfdisk -q $f.2
-          dev=$(sudo losetup -P -f --show $f.2)
-          time (echo ', +' | sudo sfdisk -q --no-reread --no-tell-kernel -N 1 $dev && sudo partx -u -n 1 $dev)
-          lsblk $dev
+          sudo sfdisk --verify $dev || true
+          time (echo ', +' | sudo sfdisk --force -q --no-reread --no-tell-kernel -N 1 $dev; sudo partx -u -n 1 $dev)
+          sudo sfdisk --verify $dev; sudo sfdisk -d $dev; lsblk $dev
+          sudo mkfs.ext4 -q ${dev}p1 && echo mkfs-ok
           sudo losetup -d $dev
