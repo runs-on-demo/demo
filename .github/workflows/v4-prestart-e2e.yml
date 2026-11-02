@@ -1,20 +1,24 @@
-name: v4 MicroVM e2e
+name: v4 check after early assignment removal
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
+  ec2:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+        rep: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/extras=s3-cache
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "cache url: ${ACTIONS_CACHE_URL:-none}"; docker run --rm hello-world | head -2
   microvm:
     strategy:
       fail-fast: false
       matrix:
-        size: [small, large]
-        rep: [1, 2, 3]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.size }}-${{ matrix.rep }}/env=v4dev/family=microvm${{ matrix.size == 'large' && '/cpu=4' || '' }}
+        rep: [1, 2, 3, 4]
+    runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
     steps:
       - uses: actions/checkout@v4
-      - name: Host
-        run: |
-          nproc; free -g | head -2; df -h / | tail -1
-          echo "work: $GITHUB_WORKSPACE"
-          ls /run/runs-on-hooks/ || true
-          test -f /run/runs-on-hooks/ready && echo setup ready
+      - run: nproc; echo "work: $GITHUB_WORKSPACE"
