@@ -1,7 +1,7 @@
 name: v4 startup timings
 
 # Measures where the time goes between a job being queued and its first step,
-# on v4 MicroVMs, cold EC2 launches and a hot pool. Each job saves its
+# on v4 MicroVMs, cold EC2 launches and EC2. Each job saves its
 # sandbox's timing marks (.setup_info); the report job prints the breakdown.
 on:
   push:
@@ -63,28 +63,8 @@ jobs:
         with:
           name: timings-${{ github.job }}-${{ strategy.job-index }}
           path: /tmp/t/
-  pool:
-    # The pool keeps one hot standby: one job at a time, with time to refill.
-    strategy:
-      max-parallel: 1
-      matrix:
-        n: [1, 2, 3]
-    runs-on: runs-on/fleet=v4-flex/env=v4dev
-    steps:
-      - name: Save timings
-        run: |
-          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
-          mkdir -p /tmp/t
-          jq --arg job "$GITHUB_JOB" --arg n "${{ strategy.job-index }}" --arg started "$started" \
-            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
-            /home/runner/.setup_info > /tmp/t/$GITHUB_JOB-${{ strategy.job-index }}.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: timings-${{ github.job }}-${{ strategy.job-index }}
-          path: /tmp/t/
-      - run: sleep 90
   report:
-    needs: [microvm, ec2-x64, ec2-arm64, pool]
+    needs: [microvm, ec2-x64, ec2-arm64]
     if: always()
     runs-on: runs-on=${{ github.run_id }}-report/env=v4dev/runner=2cpu-linux-x64
     steps:

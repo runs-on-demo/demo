@@ -3,7 +3,7 @@ kind of runner, from the timing marks each job saved (see v4-startup.yml)."""
 import json, pathlib, re, statistics, sys
 from datetime import datetime, timedelta
 
-ORDER = ["job-queued", "sandbox-created", "instance-created", "assigned", "instance-booted",
+ORDER = ["job-queued", "webhook-received", "webhook-handled", "job-polled", "job-resolved", "sandbox-created", "instance-created", "assigned", "instance-booted",
          "sandboxd-started", "host-ready", "assignment-received", "host-setup-done",
          "runner-started", "runner-connected", "runner-listening", "job-received",
          "worker-started", "step-started"]
