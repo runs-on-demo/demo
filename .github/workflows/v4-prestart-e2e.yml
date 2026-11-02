@@ -1,4 +1,4 @@
-name: v4 MicroVM sudo check
+name: v4 MicroVM runner files
 on:
   push:
     branches: [v4-test/prestart]
@@ -7,11 +7,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2]
+        rep: [1]
     runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
     steps:
       - run: |
-          for p in 1 $(pgrep -x sandboxd) $(pgrep -f Runner.Listener | head -1) $PPID $$; do printf '%s %s ' $p "$(cat /proc/$p/comm 2>/dev/null)"; grep -E 'NoNewPrivs|^Uid' /proc/$p/status 2>/dev/null | tr '\n\t' '  '; echo; done
-          ps -eo pid,ppid,user,comm | head -25
-          ls -l /usr/bin/sudo; mount | grep -E ' / | /usr' | head
-          sudo -n true && echo "sudo ok" || { echo "sudo FAILED"; exit 1; }
+          for n in Runner.Listener Runner.Worker; do p=$(pgrep -f $n | head -1); awk '$6 ~ /^\// {print $6}' /proc/$p/maps | sort -u > /tmp/m.$n; echo "$n: $(wc -l < /tmp/m.$n) files, $(xargs -a /tmp/m.$n du -cbL | tail -1)"; grep -c '^/home/runner' /tmp/m.$n; done
+          sort -u /tmp/m.* > /tmp/all; echo "union: $(wc -l < /tmp/all) files, $(xargs -a /tmp/all du -cbL | tail -1)"
+          grep '^/home/runner' /tmp/all | xargs du -cbL | tail -1
+          grep -v '^/home/runner' /tmp/all | xargs du -bL | sort -rn | head -8
+          xargs -a /tmp/all du -bL | sort -rn | head -15
+          ls /home/runner/bin | wc -l; du -sb /home/runner/bin/*.dll | sort -rn | head -5
