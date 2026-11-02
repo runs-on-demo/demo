@@ -11,6 +11,12 @@ jobs:
         arch: [arm64, x64]
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}
     steps:
+      - name: Runner diag timeline
+        shell: bash
+        run: |
+          f=$(ls -t /home/runner/_diag/Runner_*.log 2>/dev/null | tail -1)
+          echo "$f"
+          sudo cat "$f" | grep -E '^\[' | cut -c1-230 | head -400
       - name: Measure the runner's start, stock vs ReadyToRun
         shell: bash
         run: |
