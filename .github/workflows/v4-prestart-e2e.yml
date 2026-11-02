@@ -32,3 +32,10 @@ jobs:
           sudo -n true && echo "sudo ok"
           id
           docker run --rm hello-world | head -2
+      - name: runner files
+        run: |
+          free -m | head -2
+          for p in $(pgrep -f 'Runner.Listener|Runner.Worker'); do echo "== $(tr '\0' ' ' < /proc/$p/cmdline | cut -c1-80)"; sudo cat /proc/$p/maps | awk '$6 ~ /^\// {print $6}' | sort -u > /tmp/m.$p; wc -l < /tmp/m.$p; xargs -a /tmp/m.$p du -cbL 2>/dev/null | tail -1; done
+          cat /tmp/m.* | sort -u | xargs du -cbL 2>/dev/null | tail -1
+          R=$(dirname $(readlink -f /proc/$(pgrep -f Runner.Listener | head -1)/exe)); echo "runner bin $R"; du -sb $R $R/../externals 2>/dev/null
+          cat /tmp/m.* | sort -u | xargs du -bL 2>/dev/null | sort -rn | head -12
