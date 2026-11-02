@@ -6,7 +6,10 @@ on:
 
 jobs:
   small:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    strategy:
+      matrix:
+        n: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.n }}/env=v4dev/family=microvm
     steps:
       - uses: actions/checkout@v6
       - run: |
