@@ -13,13 +13,16 @@ jobs:
     steps:
       - name: Runner startup profile
         run: |
-          pid=$(pgrep -f 'bin/Runner.Listener' | head -1)
+          pid=$(pgrep -x Runner.Listener | head -1)
           read -r oncpu waitcpu _ < /proc/$pid/schedstat
           awk -v hz=$(getconf CLK_TCK) '{printf "listener: user %.2fs sys %.2fs majflt %d minflt %d\n", $14/hz, $15/hz, $12, $10}' /proc/$pid/stat
           echo "listener: on cpu $((oncpu/1000000)) ms, waiting for cpu $((waitcpu/1000000)) ms"
           grep -E '^(read_bytes|rchar)' /proc/$pid/io || true
+          # Did the snapshot keep the page cache? The image read node24 at build; jobs here never run it.
+          fincore /home/runner/externals/node24/bin/node /home/runner/bin/Runner.Listener.dll /home/runner/bin/libcoreclr.so || true
+          grep -E '^(full|some)' /proc/pressure/io || true
           # The listener's own steps, with time stamps (messages cut short).
-          f=$(ls -t /home/runner/_diag/Runner_*.log | tail -1)
+          f=$(ls -t /home/runner/_diag/Runner_*.log | head -1)
           grep -E '^\[' "$f" | awk '/Listening for Jobs|GetNextMessage/{print; exit} {print}' | cut -c1-110 | head -150
       - run: |
           echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
@@ -31,13 +34,16 @@ jobs:
     steps:
       - name: Runner startup profile
         run: |
-          pid=$(pgrep -f 'bin/Runner.Listener' | head -1)
+          pid=$(pgrep -x Runner.Listener | head -1)
           read -r oncpu waitcpu _ < /proc/$pid/schedstat
           awk -v hz=$(getconf CLK_TCK) '{printf "listener: user %.2fs sys %.2fs majflt %d minflt %d\n", $14/hz, $15/hz, $12, $10}' /proc/$pid/stat
           echo "listener: on cpu $((oncpu/1000000)) ms, waiting for cpu $((waitcpu/1000000)) ms"
           grep -E '^(read_bytes|rchar)' /proc/$pid/io || true
+          # Did the snapshot keep the page cache? The image read node24 at build; jobs here never run it.
+          fincore /home/runner/externals/node24/bin/node /home/runner/bin/Runner.Listener.dll /home/runner/bin/libcoreclr.so || true
+          grep -E '^(full|some)' /proc/pressure/io || true
           # The listener's own steps, with time stamps (messages cut short).
-          f=$(ls -t /home/runner/_diag/Runner_*.log | tail -1)
+          f=$(ls -t /home/runner/_diag/Runner_*.log | head -1)
           grep -E '^\[' "$f" | awk '/Listening for Jobs|GetNextMessage/{print; exit} {print}' | cut -c1-110 | head -150
       - run: |
           echo "arch $(uname -m), $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB, root $(df -h / | awk 'NR==2{print $2}')"
