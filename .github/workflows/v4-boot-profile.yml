@@ -4,21 +4,22 @@ on:
     branches: [v4-test/boot-profile]
   workflow_dispatch:
 jobs:
-  growpart:
+  boot:
     strategy:
+      fail-fast: false
       matrix:
-        arch: [arm64]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}
+        arch: [arm64, x64]
+        variant: [stock, test]
+        rep: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'test' && (matrix.arch == 'arm64' && '/ami=ami-0fb58bb151e7d2a45' || '/ami=ami-097cc9a11e7419235') || '' }}
     steps:
-      - name: Grow a GPT partition after the disk grew, with sfdisk
+      - name: Boot profile
         run: |
-          set -x
-          f=$(mktemp); truncate -s 1536M $f
-          printf 'label: gpt\nfirst-lba: 2048\nsize=1G, type=linux\n' | sudo sfdisk -q $f
-          truncate -s 4G $f
-          dev=$(sudo losetup -P -f --show $f); lsblk $dev
-          sudo sfdisk --verify $dev || true
-          time (echo ', +' | sudo sfdisk --force -q --no-reread --no-tell-kernel -N 1 $dev; sudo partx -u -n 1 $dev)
-          sudo sfdisk --verify $dev; sudo sfdisk -d $dev; lsblk $dev
-          sudo mkfs.ext4 -q ${dev}p1 && echo mkfs-ok
-          sudo losetup -d $dev
+          systemd-analyze || true
+          echo "== critical chain to sandboxd"
+          systemd-analyze critical-chain runs-on-sandboxd.service || true
+          echo "== rolaunch"
+          sudo journalctl -b -u rolaunch -o short-monotonic --no-pager | grep -vE "^\s*$" | cut -c1-200 | grep -E "Starting|resize|grown|growpart|prefetch|executing|processed|Finished" || true
+          echo "== sandboxd unit"
+          sudo journalctl -u runs-on-sandboxd -o short-monotonic --no-pager | head -3 | cut -c1-200 || true
+          sudo cat /var/lib/rolaunch/timings.json 2>/dev/null | head -c 2000 || true
