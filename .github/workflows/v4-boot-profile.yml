@@ -10,7 +10,7 @@ jobs:
       matrix:
         arch: [arm64, x64]
         variant: [stock, test]
-        rep: [1, 2, 3]
+        rep: [1, 2, 3, 4, 5, 6]
     runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'test' && (matrix.arch == 'arm64' && '/ami=ami-0fb58bb151e7d2a45' || '/ami=ami-097cc9a11e7419235') || '' }}
     steps:
       - name: Boot profile
