@@ -1,0 +1,28 @@
+name: v4 boot profile
+
+# Where an EC2 sandbox's boot goes before sandboxd starts.
+on:
+  push:
+    branches: ['v4-test/boot-profile*']
+
+jobs:
+  boot:
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}
+    steps:
+      - name: Boot profile
+        run: |
+          systemd-analyze || true
+          echo "== critical chain to sandboxd"
+          systemd-analyze critical-chain runs-on-sandboxd.service || true
+          echo "== blame"
+          systemd-analyze blame | head -30 || true
+          echo "== cloud-init"
+          sudo cloud-init analyze show 2>/dev/null | grep -E "Starting stage|Finished stage|took|Total Time" | head -40 || true
+          sudo cloud-init analyze blame 2>/dev/null | head -30 || true
+          echo "== sandboxd unit"
+          sudo journalctl -u runs-on-sandboxd -o short-monotonic --no-pager | head -15 || true
+          echo "== networkd"
+          sudo journalctl -b -o short-monotonic --no-pager | grep -iE "networkd|wait-online|dhcp" | head -20 || true
