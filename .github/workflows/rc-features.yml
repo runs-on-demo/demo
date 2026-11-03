@@ -256,7 +256,7 @@ jobs:
           done
           jq . <<<"$stats"
           jq -e '.writes + .hits + .racesLost >= 3 and .errors == 0 and .unscoped == 0' <<<"$stats"
-          echo "kibana first fetch: ${{ steps.kibana.outputs.seconds }} s" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=kibana first fetch::${{ steps.kibana.outputs.seconds }} s"
 
   git-hit:
     name: git-cache hit x${{ matrix.n }}
@@ -309,7 +309,7 @@ jobs:
           cpu=$(echo "scale=2; ($cpu1 - $cpu0) / $tck" | bc)
           after=$(curl -fsS http://127.0.0.1:6871/_runs-on/git-cache)
           jq . <<<"$after"
-          echo "kibana from cache: ${wall} s wall, agent CPU ${cpu} s, hitBytes $(jq '.hitBytes' <<<"$after")" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=kibana from git cache::${wall} s wall, agent CPU ${cpu} s, hitBytes $(jq '.hitBytes' <<<"$after")"
           jq -e --argjson b "$before" '.hits > $b.hits and .errors == 0' <<<"$after"
           # The busy-spin of transfermanager v0.4.16 burned about a core for
           # the whole stream; the window reader should stay well under that.
@@ -441,7 +441,7 @@ jobs:
           set -euo pipefail
           secs=$(echo "$(date +%s.%N) - ${{ steps.t0.outputs.t }}" | bc)
           sha256sum -c sums.txt
-          echo "4 GiB restore (${{ matrix.arch }} #${{ matrix.n }}): ${secs} s" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Magic Cache restore (${{ matrix.arch }} #${{ matrix.n }})::4 GiB restore and extract in ${secs} s"
           # v3.5: ~8 s, rc.1-rc.3 regression: ~37 s.
           echo "$secs < 20" | bc | grep -q 1
 
@@ -466,28 +466,29 @@ jobs:
           free -m
           size_kib=$(df -k --output=size /mnt/tmpfs | tail -1)
           mem_kib=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-          echo "tmpfs $((size_kib/1024)) MiB, RAM $((mem_kib/1024)) MiB" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=tmpfs size (${{ matrix.family }})::tmpfs $((size_kib/1024)) MiB, RAM $((mem_kib/1024)) MiB"
           # New rule: RAM minus a small reserve, never above RAM.
           test "$size_kib" -lt "$mem_kib"
           test "$size_kib" -gt $((mem_kib * 70 / 100))
       - name: Fill the tmpfs with incompressible data
         id: fill
-        continue-on-error: true
         run: |
           sudo mkdir -p /mnt/tmpfs/fill && sudo chmod 777 /mnt/tmpfs/fill
-          # stderr stays in memory: every file on the tmpfs fails once it is full.
-          err=$(head -c 200G /dev/urandom | dd of=/mnt/tmpfs/fill/blob bs=4M iflag=fullblock status=none 2>&1 >/dev/null)
+          # The runner's own files are on the tmpfs too: keep dd's stderr in
+          # memory and free the space before printing anything.
+          set +e
+          err=$(head -c 200G /dev/urandom | dd of=/mnt/tmpfs/fill/blob bs=4M iflag=fullblock 2>&1 >/dev/null)
+          filled=$(du -sm /mnt/tmpfs/fill/blob | cut -f1)
+          sudo rm -rf /mnt/tmpfs/fill
+          set -e
           echo "dd: $err"
+          echo "::notice title=tmpfs fill (${{ matrix.family }})::wrote ${filled} MiB before: $(grep -o 'No space left on device' <<<"$err" | head -1)"
           df -h /mnt/tmpfs; free -m
           grep -q "No space left on device" <<<"$err"
-      - name: The runner survived and the step saw ENOSPC
-        if: always()
+      - name: The runner is still healthy
         run: |
-          echo "fill step outcome: ${{ steps.fill.outcome }}"
-          sudo rm -rf /mnt/tmpfs/fill
-          free -m; df -h /mnt/tmpfs
+          free -m; df -h /mnt/tmpfs; uptime
           sudo dmesg 2>/dev/null | grep -iE 'out of memory|killed process' | tail -5 || true
-          test "${{ steps.fill.outcome }}" = success
 
   # ---------------------------------------------------------- disk and memory
   disk-full:
