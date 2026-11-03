@@ -1,0 +1,25 @@
+name: v4 MicroVM 400
+
+# 400 hello-world jobs on Lambda MicroVMs (family=microvm, 2 GiB), two
+# 200-job matrices (GitHub's limit is 256 a matrix).
+on:
+  push:
+    branches: ['v4-test/microvm-400*']
+
+jobs:
+  a:
+    strategy:
+      matrix:
+        x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    steps:
+      - run: echo "hello world from $(hostname) at $(date -u +%T.%N)"
+  b:
+    strategy:
+      matrix:
+        x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    steps:
+      - run: echo "hello world from $(hostname) at $(date -u +%T.%N)"
