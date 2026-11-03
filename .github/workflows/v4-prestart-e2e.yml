@@ -1,37 +1,24 @@
-name: v4 MicroVM sudo
+name: v4 first-build wait and minimal images
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
-  microvm:
+  first-build:
+    runs-on: runs-on=${{ github.run_id }}-waittest/env=v4dev/family=microvm/image=waittest
+    steps:
+      - run: |
+          cat /etc/os-release | head -2
+          command -v jq && jq --version
+          echo "queued at ${{ github.event.head_commit.timestamp }}, running at $(date -u +%FT%TZ)"
+  minimal:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2]
-    runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
+        arch: [x64, arm64]
+    runs-on: runs-on=${{ github.run_id }}-min-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-minimal-${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v4
-      - name: sudo basics
-        run: |
-          set -x
-          test "$(sudo id -u)" = 0
-          test "$(sudo -u runner id -un)" = runner
-          test "$(sudo sh -c 'echo $HOME')" = /root
-          test "$(FOO=1 sudo -E sh -c 'echo $FOO')" = 1
-          test -z "$(FOO=1 sudo sh -c 'echo $FOO')"
-          test "$(sudo BAR=2 sh -c 'echo $BAR')" = 2
-          test "$(echo piped | sudo tee /root/x)" = piped && sudo cat /root/x
-          sudo -n true && sudo -k && sudo -v
-          set +e; sudo sh -c 'exit 7'; test $? = 7 || exit 1; set -e
-          sudo -i pwd
-          sudo -s id -u
-          sudo env | grep -E '^(PATH|HOME|SUDO_USER|USER)='
-      - name: package install
-        run: |
-          if command -v apt-get; then sudo apt-get update -qq && sudo apt-get install -y -qq cowsay && /usr/games/cowsay hi; else sudo dnf install -y tree >/dev/null && tree -L 1 /; fi
-      - name: background and signal
-        run: |
-          sudo sleep 30 &
-          pid=$!
-          sleep 1; kill -TERM $pid; code=0; wait $pid || code=$?; echo "exit $code"; test $code = 143
-          sleep 0.5; if pgrep -x sleep; then echo "root sleep left"; exit 1; fi; echo "root sleep gone"
+      - run: |
+          grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release
+          uname -m
+          df -h / | tail -1
+          sudo true && echo sudo ok
