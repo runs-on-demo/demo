@@ -1,12 +1,21 @@
-name: v4 first-build wait
+name: v4 ubuntu26-minimal
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
-  first-build:
-    runs-on: runs-on=${{ github.run_id }}-waittest3/env=v4dev/family=microvm/image=waittest3
+  minimal:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, ami: ami-0e9c9c4cea8fd12fb }
+          - { arch: arm64, ami: ami-0e77fb8496f1774c4 }
+    runs-on: runs-on=${{ github.run_id }}-min-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/ami=${{ matrix.ami }}
     steps:
+      - uses: actions/checkout@v4
       - run: |
-          cat /etc/os-release | head -2
-          command -v jq && jq --version
-          echo "queued at ${{ github.event.head_commit.timestamp }}, running at $(date -u +%FT%TZ)"
+          grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release
+          uname -m
+          df -h / | tail -1
+          sudo true && echo sudo ok
+          docker run --rm hello-world | head -2
