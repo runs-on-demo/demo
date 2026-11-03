@@ -1,0 +1,18 @@
+# v4: an enterprise pool (enterprises/runs-on, classic PAT). With "spot" in
+# the commit message, attempt 1 waits so its spot instance can be
+# interrupted; the rerun should land on-demand.
+name: v4 enterprise pool
+
+on:
+  push:
+    branches: ['v4-test/enterprise*']
+
+jobs:
+  pool:
+    runs-on: runs-on/fleet=v4-ent/env=dev
+    steps:
+      - run: |
+          echo "attempt $GITHUB_RUN_ATTEMPT on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_LIFECYCLE) runner $RUNNER_NAME"
+          if [ "$GITHUB_RUN_ATTEMPT" = 1 ] && [ -n "$SPOT_TEST" ]; then sleep 600; exit 1; fi
+        env:
+          SPOT_TEST: ${{ contains(github.event.head_commit.message, 'spot') && '1' || '' }}
