@@ -45,7 +45,7 @@ jobs:
           path: |
             blob
             blob.sha
-          key: rc-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          key: rc-soak-${{ github.run_id }}
 
   wave1:
     needs: [plan, seed]
@@ -63,7 +63,7 @@ jobs:
           path: |
             blob
             blob.sha
-          key: rc-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          key: rc-soak-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Work
         run: |
@@ -90,7 +90,7 @@ jobs:
           path: |
             blob
             blob.sha
-          key: rc-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          key: rc-soak-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Work
         run: |
