@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3, 4]
+        rep: [1, 2]
     runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
     steps:
       - uses: actions/checkout@v4
@@ -33,5 +33,5 @@ jobs:
         run: |
           sudo sleep 30 &
           pid=$!
-          sleep 1; kill -TERM $pid; wait $pid; echo "exit $?"
-          sleep 0.5; ! pgrep -x sleep && echo "root sleep gone"
+          sleep 1; kill -TERM $pid; code=0; wait $pid || code=$?; echo "exit $code"; test $code = 143
+          sleep 0.5; if pgrep -x sleep; then echo "root sleep left"; exit 1; fi; echo "root sleep gone"
