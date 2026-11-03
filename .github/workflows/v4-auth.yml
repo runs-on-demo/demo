@@ -1,0 +1,46 @@
+# v4 auth review: jobs still work with the IAM guards, and the guards hold.
+name: v4 auth
+
+on:
+  push:
+    branches: ['v4-test/auth*']
+
+env:
+  BUCKET: runs-on-v4-dev-bucket-a65qxctxvixc
+  OPERATOR_ROLE: arn:aws:iam::966509368716:role/runs-on/runs-on-v4-dev/runs-on-v4-dev-OperatorRole-npfCOD3yH6iZ
+  TABLE: runs-on-v4-dev-state
+
+jobs:
+  ec2:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/runner=v4cache
+    steps:
+      - uses: actions/checkout@v4
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: blob
+          key: v4-auth-${{ github.run_id }}
+      - run: mkdir -p blob && date > blob/at
+      - uses: actions/cache/save@v4
+        with:
+          path: blob
+          key: v4-auth-${{ github.run_id }}
+      - name: guards
+        run: &probe |
+          set +e
+          aws sts get-caller-identity --query Arn --output text | sed 's/:i-[0-9a-f]*$/:<instance>/'
+          probe() { name="$1"; shift; if out=$("$@" 2>&1); then echo "ALLOWED  $name"; else echo "denied   $name: $(echo "$out" | grep -v '^$' | tail -1 | cut -c1-160)"; fi; }
+          echo probe > /tmp/p
+          probe "write bin/"         aws s3 cp /tmp/p "s3://$BUCKET/bin/auth-probe"
+          probe "list sb/"           aws s3api list-objects-v2 --bucket "$BUCKET" --prefix sb/ --max-items 1
+          probe "read other sb/"     aws s3api head-object --bucket "$BUCKET" --key sb/other/assignment.json
+          probe "state table"        aws dynamodb describe-table --table-name "$TABLE"
+          probe "assume operator"    aws sts assume-role --role-arn "$OPERATOR_ROLE" --role-session-name auth-probe
+          true
+  microvm:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --rm hello-world | head -2
+      - name: guards
+        run: *probe
