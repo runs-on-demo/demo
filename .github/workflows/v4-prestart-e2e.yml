@@ -10,7 +10,7 @@ jobs:
         include:
           - { arch: x64, ami: ami-0e9c9c4cea8fd12fb }
           - { arch: arm64, ami: ami-0e77fb8496f1774c4 }
-    runs-on: runs-on=${{ github.run_id }}-min-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/ami=${{ matrix.ami }}
+    runs-on: runs-on=${{ github.run_id }}-min-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-minimal-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
       - run: |
