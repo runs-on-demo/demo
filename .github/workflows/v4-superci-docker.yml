@@ -18,6 +18,7 @@ env:
   POSTHOG_SHA: 4fb50edb10e7958bd85139ea01dc346ca5d5c519
 jobs:
   pull:
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -54,8 +55,8 @@ jobs:
       fail-fast: false
       matrix:
         mcd: [3, 16]
-        rep: [1, 2]
-    runs-on: runs-on=${{ github.run_id }}-posthog-${{ matrix.mcd }}-${{ matrix.rep }}/env=v4dev/cpu=8/ram=32/family=m7i/image=ubuntu26-full-x64/volume=120gb
+        rep: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-posthog-${{ matrix.mcd }}-${{ matrix.rep }}/env=v4dev/cpu=4/family=m7i/image=ubuntu26-full-x64/volume=100gb
     steps:
       - name: Configure Docker
         run: |
