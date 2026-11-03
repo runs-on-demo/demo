@@ -1,0 +1,23 @@
+name: RC verify / exact type above quota
+
+# monorepo#694: an exact type whose vCPUs exceed the on-demand quota
+# (g4dn.8xlarge, 32 vCPUs, against the 20-vCPU G and VT quota) fails the
+# launch instead of waiting forever. GitHub keeps the job queued; the stack's
+# logs show the outcome, then the run is cancelled.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/quota-exact.txt
+
+permissions:
+  contents: read
+
+jobs:
+  too-big:
+    name: on-demand g4dn.8xlarge (expected launch failure)
+    runs-on: runs-on=${{ github.run_id }}-quota-exact/family=g4dn.8xlarge/spot=false/image=ubuntu26-full-x64/env=demo
+    timeout-minutes: 10
+    steps:
+      - run: echo "unexpected, g4dn.8xlarge launched with a 20-vCPU quota" && nproc

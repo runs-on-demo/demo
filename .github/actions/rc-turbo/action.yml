@@ -1,0 +1,77 @@
+name: Turborepo through Magic Cache
+description: >
+  Build a two-package Turborepo workspace through the agent's Turborepo
+  remote cache, configured by runs-on/action's `remote_cache: turbo`, and
+  check what went to or came from Magic Cache.
+
+inputs:
+  workspace:
+    description: A name unique to the run, so its task hashes are new to the cache.
+    required: true
+  uploads:
+    description: '"true" in the job that builds and uploads, "false" in a later job that restores every task from Magic Cache.'
+    required: true
+  scoped_cache_expected:
+    description: Whether the stack vends brokered scoped-cache credentials.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: runs-on/action points turbo at the agent
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "${TURBO_API:-}" == */_runs-on/tools/*/turbo ]]
+        test -n "${TURBO_TOKEN:-}"
+        test -n "${TURBO_TEAM:-}"
+
+    # Both jobs build the same sources; the name makes their hashes the
+    # run's own. turbo hashes git-tracked files, so the workspace is a repo.
+    - name: Create a workspace
+      shell: bash
+      env:
+        WORKSPACE: ${{ inputs.workspace }}
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/e2e-turbo"
+        rm -rf "${dir}"
+        mkdir -p "${dir}/packages/base" "${dir}/packages/app"
+        cd "${dir}"
+        printf '{"name":"e2e-turbo","private":true,"packageManager":"npm@10.9.4","workspaces":["packages/*"],"devDependencies":{"turbo":"2.11.10"}}\n' > package.json
+        printf '{"tasks":{"build":{"dependsOn":["^build"],"outputs":["dist/**"]}}}\n' > turbo.json
+        printf 'node_modules\ndist\n.turbo\n' > .gitignore
+        printf '%s\n' "${WORKSPACE}" > packages/base/seed.txt
+        printf '{"name":"base","version":"1.0.0","scripts":{"build":"mkdir -p dist && cp seed.txt dist/out.txt"}}\n' > packages/base/package.json
+        printf '{"name":"app","version":"1.0.0","dependencies":{"base":"*"},"scripts":{"build":"mkdir -p dist && cp ../base/dist/out.txt dist/out.txt"}}\n' > packages/app/package.json
+        npm install --no-audit --no-fund --loglevel=error
+        git init -q
+        git add -A
+        git -c user.name=e2e -c user.email=e2e@runs-on.com commit -qm workspace
+
+    - name: Build through turbo
+      shell: bash
+      env:
+        UPLOADS: ${{ inputs.uploads }}
+        WORKSPACE: ${{ inputs.workspace }}
+      run: |
+        set -euo pipefail
+        cd "${RUNNER_TEMP}/e2e-turbo"
+        # Remote only, so a hit can only come from Magic Cache.
+        npx turbo run build --cache=local:,remote:rw 2>&1 | tee build.log
+        if grep -q WARNING build.log; then
+          echo "::error::turbo warned about the remote cache"
+          exit 1
+        fi
+        grep -q 'Remote caching enabled' build.log
+        if [[ "${UPLOADS}" == "true" ]]; then
+          grep -Eq 'Cached: +0 cached, 2 total' build.log
+        else
+          grep -q 'FULL TURBO' build.log
+        fi
+        test "$(cat packages/app/dist/out.txt)" = "${WORKSPACE}"
+
+    - uses: ./.github/actions/rc-magic-cache-objects
+      with:
+        operation: ${{ inputs.uploads == 'true' && 'write' || 'read' }}
+        scoped_cache_expected: ${{ inputs.scoped_cache_expected }}

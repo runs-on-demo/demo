@@ -1,0 +1,101 @@
+name: RC verify / soak
+
+# Sustained load on the env=demo stack: two waves of 240 jobs, 24 at a time,
+# each about 4 minutes, rotating runner types. Every job checks out through
+# the git cache, installs through the apt cache, restores a 512 MiB Magic
+# Cache entry and burns CPU.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/soak.txt
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.p.outputs.matrix }}
+    steps:
+      - id: p
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          kinds = [
+              "runner=2cpu-linux-x64",
+              "runner=2cpu-linux-arm64",
+              "runner=4cpu-linux-x64",
+              "family=m8a.large/extras=tmpfs",
+              "runner=4cpu-linux-arm64",
+              "family=c7i+c7a+m7i+m7a/cpu=2",
+          ]
+          jobs = [{"n": i, "kind": kinds[i % len(kinds)]} for i in range(1, 241)]
+          print("matrix=" + json.dumps({"include": jobs}))
+          PY
+
+  seed:
+    runs-on: runs-on=${{ github.run_id }}-seed/runner=2cpu-linux-x64/env=demo
+    steps:
+      - run: mkdir -p blob && head -c 536870912 /dev/urandom > blob/data && sha256sum blob/data > blob.sha
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-${{ github.run_id }}-${{ github.run_attempt }}
+
+  wave1:
+    needs: [plan, seed]
+    name: w1 ${{ matrix.n }} ${{ matrix.kind }}
+    strategy:
+      fail-fast: false
+      max-parallel: 24
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: runs-on=${{ github.run_id }}/${{ matrix.kind }}/env=demo
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      - name: Work
+        run: |
+          set -euo pipefail
+          sha256sum -c blob.sha
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          timeout 150 bash -c 'for c in $(seq $(nproc)); do (while :; do sha256sum blob/data >/dev/null; done) & done; wait' || true
+          sleep 60
+
+  wave2:
+    needs: [plan, seed, wave1]
+    if: ${{ !cancelled() }}
+    name: w2 ${{ matrix.n }} ${{ matrix.kind }}
+    strategy:
+      fail-fast: false
+      max-parallel: 24
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: runs-on=${{ github.run_id }}/${{ matrix.kind }}/env=demo
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      - name: Work
+        run: |
+          set -euo pipefail
+          sha256sum -c blob.sha
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          timeout 150 bash -c 'for c in $(seq $(nproc)); do (while :; do sha256sum blob/data >/dev/null; done) & done; wait' || true
+          sleep 60

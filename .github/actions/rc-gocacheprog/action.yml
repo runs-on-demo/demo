@@ -1,0 +1,75 @@
+name: gocacheprog through Magic Cache
+description: >
+  Build a small Go module through runs-on/action's `remote_cache: go`, and
+  check what went to or came from Magic Cache.
+
+inputs:
+  module:
+    description: Identifies the module's content. The job that uploads it and the job that builds it again pass the same value.
+    required: true
+  uploads:
+    description: '"true" in the job that compiles and uploads, "false" in a later job that builds from Magic Cache.'
+    required: true
+  scoped_cache_expected:
+    description: Whether the stack vends brokered scoped-cache credentials.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # GitHub gives the job's runtime token to actions only. runs-on/action
+    # keeps it in a file for its helper and must not export it.
+    - name: The runtime token is not in the steps' environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
+          echo "::error::the job's runtime token is in the environment of its run steps"
+          exit 1
+        fi
+        test -n "${GOCACHEPROG:-}"
+
+    # One package holds the module's identity, so the first job always has
+    # something to compile and upload.
+    - name: Create a module
+      shell: bash
+      env:
+        MODULE: ${{ inputs.module }}
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/e2e-gocacheprog"
+        rm -rf "${dir}"
+        mkdir -p "${dir}/lib"
+        cd "${dir}"
+        printf 'module example.com/gocacheprog\n\ngo 1.24\n' > go.mod
+        printf 'package main\n\nimport (\n\t"encoding/json"\n\t"fmt"\n\n\t"example.com/gocacheprog/lib"\n)\n\nfunc main() {\n\tout, _ := json.Marshal(map[string]string{"module": lib.Module})\n\tfmt.Println(string(out))\n}\n' > main.go
+        printf 'package lib\n\nconst Module = "%s"\n' "${MODULE}" > lib/lib.go
+        # The go command does not cache its view of files written in the
+        # last two seconds.
+        sleep 3
+
+    - name: Build through gocacheprog
+      shell: bash
+      env:
+        UPLOADS: ${{ inputs.uploads }}
+      run: |
+        set -euo pipefail
+        cd "${RUNNER_TEMP}/e2e-gocacheprog"
+        go build -x -o app . 2> build.log
+        ./app
+        compiled="$(grep -cE 'compile"? -o' build.log || true)"
+        echo "Packages compiled: ${compiled}"
+        if [[ "${UPLOADS}" == "true" && "${compiled}" -eq 0 ]]; then
+          echo "::error::the first build of the module compiled nothing"
+          exit 1
+        fi
+        if [[ "${UPLOADS}" != "true" && "${compiled}" -ne 0 ]]; then
+          grep -E 'compile"? -o' build.log
+          echo "::error::a build with every package in Magic Cache compiled some"
+          exit 1
+        fi
+
+    - uses: ./.github/actions/rc-magic-cache-objects
+      with:
+        operation: ${{ inputs.uploads == 'true' && 'write' || 'read' }}
+        scoped_cache_expected: ${{ inputs.scoped_cache_expected }}

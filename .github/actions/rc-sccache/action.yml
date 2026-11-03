@@ -1,0 +1,95 @@
+name: sccache through Magic Cache
+description: >
+  Build a small workspace, and compile C, through the agent's WebDAV cache
+  configured by runs-on/action's `remote_cache: sccache`, and check what went to or came
+  from Magic Cache.
+
+inputs:
+  uploads:
+    description: '"true" in the job that compiles and uploads, "false" in a later job that builds from Magic Cache.'
+    required: true
+  scoped_cache_expected:
+    description: Whether the stack vends brokered scoped-cache credentials.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # GitHub gives the job's runtime token to actions only. runs-on/action
+    # registers it with the agent, and the WebDAV endpoint's path stands for it.
+    - name: The runtime token is not in the steps' environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
+          echo "::error::the job's runtime token is in the environment of its run steps"
+          exit 1
+        fi
+        test "${RUSTC_WRAPPER:-}" = sccache
+        [[ "${SCCACHE_WEBDAV_ENDPOINT:-}" == */_runs-on/tools/*/sccache ]]
+        test -z "${SCCACHE_WEBDAV_TOKEN:-}"
+        # The daemon can restart from a run step without a GitHub token.
+        sccache --start-server >/dev/null
+        sccache --stop-server >/dev/null
+
+    # Local crates only: both jobs compile the same sources, so the second
+    # one must find every crate in Magic Cache.
+    - name: Create a workspace
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/e2e-sccache"
+        rm -rf "${dir}"
+        mkdir -p "${dir}/base/src" "${dir}/app/src"
+        cd "${dir}"
+        printf '[workspace]\nmembers = ["base", "app"]\nresolver = "2"\n' > Cargo.toml
+        printf '[package]\nname = "base"\nversion = "0.1.0"\nedition = "2021"\n' > base/Cargo.toml
+        printf 'pub fn answer() -> u32 {\n    42\n}\n' > base/src/lib.rs
+        printf '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nbase = { path = "../base" }\n' > app/Cargo.toml
+        printf 'pub fn doubled() -> u32 {\n    base::answer() * 2\n}\n' > app/src/lib.rs
+        printf '#include <stdio.h>\n\nint main(void) {\n  puts("magic");\n  return 0;\n}\n' > check.c
+
+    - name: Build through sccache
+      shell: bash
+      env:
+        UPLOADS: ${{ inputs.uploads }}
+      run: |
+        set -euo pipefail
+        cd "${RUNNER_TEMP}/e2e-sccache"
+        stats() { sccache --show-stats --stats-format=json | jq -r "$1"; }
+
+        sccache --zero-stats >/dev/null
+        cargo build --quiet
+        # C and C++ builds call sccache as a compiler launcher, and reach the
+        # same server.
+        sccache cc -c check.c -o check.o
+        sccache --show-stats
+
+        location="$(stats '.cache_location')"
+        if [[ "${location}" != webdav* ]]; then
+          echo "::error::sccache stores its cache in ${location}, not through Magic Cache"
+          exit 1
+        fi
+        hits="$(stats '[.stats.cache_hits.counts[]] | add // 0')"
+        misses="$(stats '[.stats.cache_misses.counts[]] | add // 0')"
+        if [[ "${UPLOADS}" == "true" ]]; then
+          # sccache saves an entry after it has answered the compiler: wait
+          # until every miss is saved, or failed to be.
+          for _ in $(seq 60); do
+            [[ "$(stats '.stats.cache_writes + .stats.cache_write_errors')" -ge "${misses}" ]] && break
+            sleep 1
+          done
+          test "$(stats '.stats.cache_write_errors')" -eq 0
+          test "${misses}" -ge 3
+          test "$(stats '.stats.cache_writes')" -eq "${misses}"
+        else
+          if [[ "${misses}" -ne 0 || "${hits}" -lt 3 ]]; then
+            echo "::error::${hits} hits and ${misses} misses, want every compilation from Magic Cache"
+            exit 1
+          fi
+        fi
+
+    - uses: ./.github/actions/rc-magic-cache-objects
+      with:
+        operation: ${{ inputs.uploads == 'true' && 'write' || 'read' }}
+        scoped_cache_expected: ${{ inputs.scoped_cache_expected }}

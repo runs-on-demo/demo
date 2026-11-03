@@ -1,0 +1,59 @@
+name: RC verify / stress burst
+
+# A burst of concurrent jobs on the env=demo stack: every job must start and
+# finish. Each one goes through the git cache and the apt cache.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/stress.txt
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      x64: ${{ steps.p.outputs.x64 }}
+      arm64: ${{ steps.p.outputs.arm64 }}
+    steps:
+      - id: p
+        run: |
+          echo "x64=$(python3 -c 'import json;print(json.dumps(list(range(1,151))))')" >> "$GITHUB_OUTPUT"
+          echo "arm64=$(python3 -c 'import json;print(json.dumps(list(range(1,101))))')" >> "$GITHUB_OUTPUT"
+
+  x64:
+    needs: plan
+    name: x64 ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.x64) }}
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/env=demo
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Work
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          sleep 90
+
+  arm64:
+    needs: plan
+    name: arm64 ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.arm64) }}
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-arm64/env=demo
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Work
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          sleep 90

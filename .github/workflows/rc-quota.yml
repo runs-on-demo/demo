@@ -1,0 +1,32 @@
+name: RC verify / on-demand quota wait
+
+# monorepo#694: on-demand launches that hit VcpuLimitExceeded wait for quota
+# and then launch with a new CreateFleet token. The demo account's
+# "Running On-Demand G and VT instances" quota is 20 vCPUs: 7 on-demand
+# g4dn.xlarge (4 vCPUs each, 28 in all) means at least 2 jobs wait for a
+# running one to finish. Every job must end up running.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/quota.txt
+
+permissions:
+  contents: read
+
+jobs:
+  wait-for-quota:
+    name: on-demand g4dn.xlarge ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7]
+    runs-on: runs-on=${{ github.run_id }}-quota-${{ matrix.n }}/family=g4dn.xlarge/spot=false/image=ubuntu26-full-x64/env=demo
+    timeout-minutes: 30
+    steps:
+      - name: Hold the instance
+        run: |
+          curl -fsS http://169.254.169.254/latest/meta-data/instance-type -H "X-aws-ec2-metadata-token: $(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')" || true
+          echo; nproc; date -u
+          sleep 240

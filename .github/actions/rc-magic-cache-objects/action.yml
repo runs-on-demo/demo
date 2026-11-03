@@ -1,0 +1,57 @@
+name: Magic Cache objects
+description: >
+  Check, from the cache server's diagnostics, that the job wrote or read
+  cache objects, and that all of them are in the namespace the stack's cache
+  isolation selects.
+
+inputs:
+  operation:
+    description: '"write" for the objects the job uploaded, "read" for the ones it restored.'
+    required: true
+  scoped_cache_expected:
+    description: Whether the stack vends brokered scoped-cache credentials.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check the namespace of the cache objects
+      shell: bash
+      env:
+        OPERATION: ${{ inputs.operation }}
+        SCOPED_CACHE_EXPECTED: ${{ inputs.scoped_cache_expected }}
+      run: |
+        set -euo pipefail
+
+        # Custom runners name the cache server RUNS_ON_MAGIC_CACHE_URL; the
+        # others point ACTIONS_CACHE_URL at it.
+        cache_url="${RUNS_ON_MAGIC_CACHE_URL:-${ACTIONS_CACHE_URL:-http://$(hostname -I | awk '{print $1}'):6871/}}"
+        diagnostics="$(curl -sfS "${cache_url%/}/_runs-on/diagnostics")"
+
+        brokered="$(jq -r '.brokered' <<<"${diagnostics}")"
+        if [[ "${SCOPED_CACHE_EXPECTED}" == "true" && "${brokered}" != "true" ]]; then
+          echo "::error::scoped cache broker expected on this stack but diagnostics report brokered=false"
+          exit 1
+        fi
+        namespace="cache/v1/"
+        if [[ "${brokered}" == "true" ]]; then
+          namespace="scoped-cache/"
+        fi
+
+        # The job's only cache client is the tool under test, so every object
+        # of the operation is one of its entries.
+        objects="$(jq -c --arg op "${OPERATION}" '[.objects[] | select(.operation == $op)]' <<<"${diagnostics}")"
+        count="$(jq 'length' <<<"${objects}")"
+        if [[ "${count}" -eq 0 ]]; then
+          echo "::error::the cache server recorded no ${OPERATION} for this job"
+          jq . <<<"${diagnostics}"
+          exit 1
+        fi
+        outside="$(jq -r --arg ns "${namespace}" '.[] | select(.objectKey | startswith($ns) | not) | .objectKey' <<<"${objects}")"
+        if [[ -n "${outside}" ]]; then
+          echo "::error::objects outside ${namespace} (brokered=${brokered}):"
+          echo "${outside}"
+          exit 1
+        fi
+        echo "${count} objects (${OPERATION}), all under ${namespace} (brokered=${brokered}, dropped=$(jq '.droppedObjects // 0' <<<"${diagnostics}")), scopes: $(jq -r '[.[].scope] | unique | join(", ")' <<<"${objects}")"
+        jq -r '.[0:3][] | "  \(.objectKey)"' <<<"${objects}"
