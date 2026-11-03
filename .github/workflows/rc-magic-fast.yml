@@ -1,0 +1,50 @@
+name: RC verify / Magic Cache restore on tmpfs
+
+# The 4 GiB restores of rc-features are bound by gp3 write throughput (400
+# MB/s). Here the archive and the files land on tmpfs, so the restore step
+# measures the download itself.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/magic-fast.txt
+
+permissions:
+  contents: read
+
+jobs:
+  save:
+    runs-on: runs-on=${{ github.run_id }}-mf-save/family=r8a.xlarge/image=ubuntu26-full-x64/extras=tmpfs+s3-cache/env=demo
+    steps:
+      - run: mkdir -p big && for i in 1 2 3 4; do head -c 1073741824 /dev/urandom > big/part$i; done && sha256sum big/* > sums.txt
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            big
+            sums.txt
+          key: rc-mf-${{ github.run_id }}-${{ github.run_attempt }}
+
+  restore:
+    needs: save
+    name: restore #${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-mf-${{ matrix.n }}/family=r8a.xlarge/image=ubuntu26-full-x64/extras=tmpfs+s3-cache/env=demo
+    steps:
+      - id: t0
+        run: echo "t=$(date +%s.%N)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            big
+            sums.txt
+          key: rc-mf-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      - name: Time
+        run: |
+          secs=$(echo "$(date +%s.%N) - ${{ steps.t0.outputs.t }}" | bc)
+          echo "::notice title=tmpfs restore #${{ matrix.n }}::4 GiB restore and extract on tmpfs in ${secs} s"
+          sha256sum -c sums.txt
