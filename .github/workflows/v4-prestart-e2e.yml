@@ -28,7 +28,7 @@ jobs:
           sudo env | grep -E '^(PATH|HOME|SUDO_USER|USER)='
       - name: package install
         run: |
-          if command -v apt-get; then sudo apt-get update -qq && sudo apt-get install -y -qq cowsay && /usr/games/cowsay hi; else sudo dnf install -y -q tree && tree -L 1 /; fi
+          if command -v apt-get; then sudo apt-get update -qq && sudo apt-get install -y -qq cowsay && /usr/games/cowsay hi; else sudo dnf install -y tree >/dev/null && tree -L 1 /; fi
       - name: background and signal
         run: |
           sudo sleep 30 &
