@@ -55,8 +55,9 @@ jobs:
       fail-fast: false
       matrix:
         mcd: [3, 16]
-        rep: [1, 2, 3]
-    runs-on: runs-on=${{ github.run_id }}-posthog-${{ matrix.mcd }}-${{ matrix.rep }}/env=v4dev/cpu=4/family=m7i/image=ubuntu26-full-x64/volume=100gb
+        rep: [1, 2]
+        sha: [fbf1e0015fba76b0e5407a308ed4fad3342049f8, 5211f9951f597ac09e96bd66dc167679947881eb]
+    runs-on: runs-on=${{ github.run_id }}-posthog-${{ matrix.mcd }}-${{ matrix.rep }}-${{ strategy.job-index }}/env=v4dev/cpu=4/family=m7i/image=ubuntu26-full-x64/volume=100gb
     steps:
       - name: Configure Docker
         run: |
@@ -69,7 +70,7 @@ jobs:
       - name: Fetch PostHog
         run: |
           mkdir posthog && cd posthog && git init -q && git remote add origin https://github.com/PostHog/posthog
-          git fetch -q --depth 1 origin $POSTHOG_SHA && git checkout -q FETCH_HEAD && du -sh .
+          git fetch -q --depth 1 origin ${{ matrix.sha }} && git checkout -q FETCH_HEAD && du -sh .
       - name: Build PostHog
         working-directory: posthog
         run: |
@@ -80,11 +81,11 @@ jobs:
           grep -E "resolve|load metadata|extracting sha256|DONE [0-9.]+s$" /tmp/build.log | grep -E "FROM|resolve|load metadata" | head -30
           echo "== slowest steps"; grep -E "^#[0-9]+ DONE [0-9.]+s" /tmp/build.log | sort -t' ' -k3 -g -r | head -15
           mkdir -p /tmp/r && echo "{\"kind\":\"posthog\",\"mcd\":${{ matrix.mcd }},\"build\":$(echo "$e - $s" | bc)}" > /tmp/r/posthog-${{ matrix.mcd }}-${{ matrix.rep }}.json
-          cp /tmp/build.log /tmp/r/build-${{ matrix.mcd }}-${{ matrix.rep }}.log
+          cp /tmp/build.log /tmp/r/build-${{ matrix.mcd }}-${{ strategy.job-index }}.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: r-posthog-${{ matrix.mcd }}-${{ matrix.rep }}
+          name: r-posthog-${{ matrix.mcd }}-${{ strategy.job-index }}
           path: /tmp/r/
   report:
     needs: [posthog]
@@ -107,7 +108,7 @@ jobs:
           path: r
       - run: |
           cat r/*.json | jq -s -r '
-            group_by([.kind,.arch,.mcd])[] |
-            "\(.[0].kind) \(.[0].arch // "x64") mcd=\(.[0].mcd) n=\(length) " +
+            group_by([.kind,.arch,.mcd,.sha])[] |
+            "\(.[0].kind) \(.[0].arch // "x64") \(.[0].sha // "" | .[0:7]) mcd=\(.[0].mcd) n=\(length) " +
             (if .[0].kind=="pull" then "single=\([.[].single]|sort|map(.*10|floor/10)) stack=\([.[].stack]|sort|map(.*10|floor/10))" else "build=\([.[].build]|sort|map(floor))" end)'
           for f in r/build-*.log; do echo "== $f"; grep -E "^#[0-9]+ \[.*(FROM|internal\] load metadata)" "$f" | head -8; grep -E "^#[0-9]+ (resolve|sha256:).*done" "$f" | tail -3; done
