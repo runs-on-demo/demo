@@ -4,7 +4,7 @@ on:
     branches: [v4-test/prestart]
 jobs:
   first-build:
-    runs-on: runs-on=${{ github.run_id }}-waittest/env=v4dev/family=microvm/image=waittest
+    runs-on: runs-on=${{ github.run_id }}-waittest2/env=v4dev/family=microvm/image=waittest2
     steps:
       - run: |
           cat /etc/os-release | head -2
