@@ -1,24 +1,12 @@
-name: v4 first-build wait and minimal images
+name: v4 first-build wait
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
   first-build:
-    runs-on: runs-on=${{ github.run_id }}-waittest2/env=v4dev/family=microvm/image=waittest2
+    runs-on: runs-on=${{ github.run_id }}-waittest3/env=v4dev/family=microvm/image=waittest3
     steps:
       - run: |
           cat /etc/os-release | head -2
           command -v jq && jq --version
           echo "queued at ${{ github.event.head_commit.timestamp }}, running at $(date -u +%FT%TZ)"
-  minimal:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64, arm64]
-    runs-on: runs-on=${{ github.run_id }}-min-${{ matrix.arch }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-minimal-${{ matrix.arch }}
-    steps:
-      - run: |
-          grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release
-          uname -m
-          df -h / | tail -1
-          sudo true && echo sudo ok
