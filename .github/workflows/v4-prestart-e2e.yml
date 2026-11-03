@@ -1,34 +1,37 @@
-name: v4 start time without STS
+name: v4 MicroVM sudo
 on:
   push:
     branches: [v4-test/prestart]
 jobs:
-  ec2:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [arm64, x64]
-        rep: [1, 2, 3, 4]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/extras=s3-cache
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: probe
-          key: sts-probe-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
-      - run: |
-          mkdir -p probe && date > probe/at
-          docker run --rm hello-world | head -2
   microvm:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3, 4, 5, 6, 7, 8]
+        rep: [1, 2, 3, 4]
     runs-on: runs-on=${{ github.run_id }}-microvm-${{ matrix.rep }}/env=v4dev/family=microvm
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          nproc
-          sudo -n true && echo "sudo ok"
-          id
-          docker run --rm hello-world | head -2
+      - name: sudo basics
+        run: |
+          set -x
+          test "$(sudo id -u)" = 0
+          test "$(sudo -u runner id -un)" = runner
+          test "$(sudo sh -c 'echo $HOME')" = /root
+          test "$(FOO=1 sudo -E sh -c 'echo $FOO')" = 1
+          test -z "$(FOO=1 sudo sh -c 'echo $FOO')"
+          test "$(sudo BAR=2 sh -c 'echo $BAR')" = 2
+          test "$(echo piped | sudo tee /root/x)" = piped && sudo cat /root/x
+          sudo -n true && sudo -k && sudo -v
+          set +e; sudo sh -c 'exit 7'; test $? = 7 || exit 1; set -e
+          sudo -i pwd
+          sudo -s id -u
+          sudo env | grep -E '^(PATH|HOME|SUDO_USER|USER)='
+      - name: package install
+        run: |
+          if command -v apt-get; then sudo apt-get update -qq && sudo apt-get install -y -qq cowsay && /usr/games/cowsay hi; else sudo dnf install -y -q tree && tree -L 1 /; fi
+      - name: background and signal
+        run: |
+          sudo sleep 30 &
+          pid=$!
+          sleep 1; kill -TERM $pid; wait $pid; echo "exit $?"
+          sleep 0.5; ! pgrep -x sleep && echo "root sleep gone"
