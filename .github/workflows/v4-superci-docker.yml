@@ -86,3 +86,28 @@ jobs:
         with:
           name: r-posthog-${{ matrix.mcd }}-${{ matrix.rep }}
           path: /tmp/r/
+  report:
+    needs: [posthog]
+    if: always()
+    permissions:
+      actions: read
+    runs-on: runs-on=${{ github.run_id }}-report/env=v4dev/runner=2cpu-linux-x64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: r-*
+          merge-multiple: true
+          path: r
+          run-id: 41721133335
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: r-*
+          merge-multiple: true
+          path: r
+      - run: |
+          cat r/*.json | jq -s -r '
+            group_by([.kind,.arch,.mcd])[] |
+            "\(.[0].kind) \(.[0].arch // "x64") mcd=\(.[0].mcd) n=\(length) " +
+            (if .[0].kind=="pull" then "single=\([.[].single]|sort|map(.*10|floor/10)) stack=\([.[].stack]|sort|map(.*10|floor/10))" else "build=\([.[].build]|sort|map(floor))" end)'
+          for f in r/build-*.log; do echo "== $f"; grep -E "^#[0-9]+ \[.*(FROM|internal\] load metadata)" "$f" | head -8; grep -E "^#[0-9]+ (resolve|sha256:).*done" "$f" | tail -3; done
