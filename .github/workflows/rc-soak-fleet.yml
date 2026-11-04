@@ -4,7 +4,8 @@ name: RC verify / soak (Fleet)
 # 24 at a time (max-parallel), each about 4 minutes. Fleet runs every job of a
 # pool through one scale set, so GitHub only asks for runners as jobs become
 # eligible: expect no idle runners and no idle shutdowns, unlike Flex.
-# Each job restores a 512 MiB cache entry and burns CPU.
+# Each job restores a cache entry (512 MiB, or 64 MiB on baseline's 1 GiB
+# t3a.micro, where 512 MiB gets the runner OOM-killed) and burns CPU.
 on:
   workflow_dispatch:
     inputs:
@@ -29,8 +30,8 @@ jobs:
         run: |
           python3 - >> "$GITHUB_OUTPUT" <<'PY'
           import json
-          fleets = ["baseline", "memory-burst"]
-          jobs = [{"n": i, "fleet": fleets[i % len(fleets)]} for i in range(1, 241)]
+          fleets = [("baseline", "small"), ("memory-burst", "big")]
+          jobs = [{"n": i, "fleet": fleets[i % 2][0], "blob": fleets[i % 2][1]} for i in range(1, 241)]
           print("matrix=" + json.dumps({"include": jobs}))
           PY
 
@@ -43,7 +44,14 @@ jobs:
           path: |
             blob
             blob.sha
-          key: rc-soak-fleet-${{ github.run_id }}
+          key: rc-soak-fleet-${{ github.run_id }}-big
+      - run: rm -rf blob && mkdir -p blob && head -c 67108864 /dev/urandom > blob/data && sha256sum blob/data > blob.sha
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-fleet-${{ github.run_id }}-small
 
   wave1:
     needs: [plan, seed]
@@ -61,7 +69,7 @@ jobs:
           path: |
             blob
             blob.sha
-          key: rc-soak-fleet-${{ github.run_id }}
+          key: rc-soak-fleet-${{ github.run_id }}-${{ matrix.blob }}
           fail-on-cache-miss: true
       - name: Work
         run: |
