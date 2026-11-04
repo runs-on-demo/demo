@@ -1,0 +1,84 @@
+name: RC verify / soak (Fleet)
+
+# The Flex soak (rc-soak.yml) on a Fleet stack instead: two waves of 240 jobs,
+# 24 at a time (max-parallel), each about 4 minutes. Fleet runs every job of a
+# pool through one scale set, so GitHub only asks for runners as jobs become
+# eligible: expect no idle runners and no idle shutdowns, unlike Flex.
+# Each job restores a 512 MiB cache entry and burns CPU.
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Fleet stack env label (runs-on/fleet=<pool>/env=<env>)
+        default: dev-crohr
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/soak-fleet.txt
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.p.outputs.matrix }}
+    steps:
+      - id: p
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          fleets = ["baseline", "memory-burst"]
+          jobs = [{"n": i, "fleet": fleets[i % len(fleets)]} for i in range(1, 241)]
+          print("matrix=" + json.dumps({"include": jobs}))
+          PY
+
+  seed:
+    runs-on: runs-on/fleet=memory-burst/env=${{ inputs.env || 'dev-crohr' }}
+    steps:
+      - run: mkdir -p blob && head -c 536870912 /dev/urandom > blob/data && sha256sum blob/data > blob.sha
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-fleet-${{ github.run_id }}
+
+  wave1:
+    needs: [plan, seed]
+    name: w1 ${{ matrix.n }} ${{ matrix.fleet }}
+    strategy:
+      fail-fast: false
+      max-parallel: 24
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: runs-on/fleet=${{ matrix.fleet }}/env=${{ inputs.env || 'dev-crohr' }}
+    timeout-minutes: 20
+    steps: &work
+      - uses: actions/checkout@v5
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-fleet-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Work
+        run: |
+          set -euo pipefail
+          sha256sum -c blob.sha
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          timeout 150 bash -c 'for c in $(seq $(nproc)); do (while :; do sha256sum blob/data >/dev/null; done) & done; wait' || true
+          sleep 60
+
+  wave2:
+    needs: [plan, seed, wave1]
+    if: ${{ !cancelled() }}
+    name: w2 ${{ matrix.n }} ${{ matrix.fleet }}
+    strategy:
+      fail-fast: false
+      max-parallel: 24
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: runs-on/fleet=${{ matrix.fleet }}/env=${{ inputs.env || 'dev-crohr' }}
+    timeout-minutes: 20
+    steps: *work
