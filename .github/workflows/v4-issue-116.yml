@@ -1,0 +1,26 @@
+name: v4 issue 116 apparmor stacking
+# runner-images-for-aws#116: docker-default stacked as //&unconfined on the
+# Ubuntu 26 images. Reproduces it and tries each candidate fix.
+on:
+  push:
+    branches: ['v4-test/issue-116-apparmor']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repro:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: ubuntu26-full-x64, arch: x64 }
+          - { image: ubuntu26-full-arm64, arch: arm64 }
+          - { image: ubuntu24-full-x64, arch: x64 }
+          - { image: ubuntu26-minimal-x64, arch: x64 }
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.image }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Reproduce the signal denial and try each fix
+        run: |
+          uname -r; cat /etc/os-release | grep PRETTY
+          bash scripts/issue-116.sh
