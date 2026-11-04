@@ -1,0 +1,46 @@
+name: v3 vs v4 env parity
+
+on:
+  push:
+    branches: ['v4-test/env-parity']
+
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [demo, v4dev]
+    runs-on: runs-on=${{ github.run_id }}/env=${{ matrix.env }}/runner=parity
+    steps:
+      - name: step env (names)
+        run: |
+          echo "== names"; env | cut -d= -f1 | sort | tr '\n' ' '; echo
+          echo "== PATH=$PATH"
+          echo "== markers: $(ls /tmp/preinstall-ran /tmp/prerun-ran 2>&1 | tr '\n' ' ')"
+          echo "== FROM_PREINSTALL=${FROM_PREINSTALL:-unset} FROM_PRERUN=${FROM_PRERUN:-unset}"
+          echo "== RUNNER_TOOL_CACHE=${RUNNER_TOOL_CACHE:-unset} GITHUB_SERVER_URL=${GITHUB_SERVER_URL:-unset} GITHUB_API_URL=${GITHUB_API_URL:-unset} GITHUB_HOST=${GITHUB_HOST:-unset}"
+          echo "== /etc/profile tail"; tail -3 /etc/profile
+          echo "== runner .env names"; sudo cut -d= -f1 /home/runner/.env 2>/dev/null | sort | tr '\n' ' '; echo
+      - name: set job env and path
+        run: |
+          echo "FROM_STEP=yes" >> "$GITHUB_ENV"
+          mkdir -p /tmp/step-bin && echo "/tmp/step-bin" >> "$GITHUB_PATH"
+      - name: login shell keeps the job's env and path
+        shell: bash -l {0}
+        run: |
+          echo "== login FROM_STEP=${FROM_STEP:-unset} FROM_PREINSTALL=${FROM_PREINSTALL:-unset}"
+          echo "== login PATH=$PATH"
+          echo "== login names"; env | cut -d= -f1 | sort | tr '\n' ' '; echo
+  container:
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [demo, v4dev]
+    runs-on: runs-on=${{ github.run_id }}/env=${{ matrix.env }}/runner=parity
+    container: ubuntu:24.04
+    steps:
+      - name: container step env (names)
+        run: |
+          echo "== names"; env | cut -d= -f1 | sort | tr '\n' ' '; echo
+          echo "== PATH=$PATH"
+          echo "== FROM_PREINSTALL=${FROM_PREINSTALL:-unset} FROM_PRERUN=${FROM_PRERUN:-unset}"

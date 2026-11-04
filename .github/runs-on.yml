@@ -1,0 +1,15 @@
+runners:
+  parity:
+    family: [m7a, m7i, c7a]
+    cpu: [2]
+    image: ubuntu24-full-x64
+    preinstall: |
+      echo "preinstall user=$(whoami) home=$HOME"
+      echo "FROM_PREINSTALL=yes" >> "$GITHUB_ENV"
+      echo "/opt/preinstall-bin" >> "$GITHUB_PATH"
+      touch /tmp/preinstall-ran
+    prerun: |
+      echo "prerun user=$(whoami)"
+      echo "FROM_PRERUN=yes" >> "$GITHUB_ENV"
+      echo "/opt/prerun-bin" >> "$GITHUB_PATH"
+      touch /tmp/prerun-ran
