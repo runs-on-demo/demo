@@ -1,0 +1,59 @@
+name: v4 rolaunch prefetch
+# Job start on test AMIs: rolaunch from main vs rolaunch reading the
+# runner's files at boot (runner-images-for-aws#117). Same base, same age.
+on:
+  push:
+    branches: ['v4-test/rolaunch-prefetch']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  start:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+        variant: [main, test]
+        n: [1, 2, 3, 4, 5, 6]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.n }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}/ami=${{ matrix.arch == 'x64' && (matrix.variant == 'test' && 'ami-00feb3603139646c9' || 'ami-0f1273d92f0b0ac7f') || (matrix.variant == 'test' && 'ami-064f639f9ea877aa0' || 'ami-09889b1a855453987') }}
+    steps:
+      - name: Save timings
+        run: |
+          started=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          date +%s%3N > /tmp/t1
+          mkdir -p /tmp/t
+          jq --arg job "${{ matrix.arch }}-${{ matrix.variant }}" --arg n "${{ strategy.job-index }}" --arg started "$started" \
+            '{kind: $job, index: $n, step_started: $started, groups: [.[] | select(.group | test("[Tt]imings")) | .detail]}' \
+            /home/runner/.setup_info > /tmp/t/t-${{ strategy.job-index }}.json
+      - uses: actions/checkout@v6
+      - name: First action
+        run: |
+          t3=$(date +%s%3N); c=$(( t3 - $(cat /tmp/t1) ))
+          echo "checkout_ms=$c"
+          ls /home/runner/externals
+          sudo journalctl -b -u rolaunch --no-pager -o short-monotonic | grep -E "prefetch|executing" | cut -c1-200 || true
+          systemd-analyze || true
+          jq --argjson c $c '.checkout_ms=$c' /tmp/t/t-${{ strategy.job-index }}.json > /tmp/t/x && mv /tmp/t/x /tmp/t/t-${{ strategy.job-index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-${{ strategy.job-index }}
+          path: /tmp/t/
+  report:
+    needs: [start]
+    if: always()
+    runs-on: runs-on=${{ github.run_id }}-report/env=v4dev/runner=2cpu-linux-x64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: timings-*
+          merge-multiple: true
+          path: timings
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
+          python3 .github/scripts/startup_report.py timings jobs.json
+          echo "== first step start to checkout done (ms)"
+          cat timings/*.json | jq -s -r 'group_by(.kind)[] | "\(.[0].kind) n=\(length) \([.[].checkout_ms] | sort)"'
