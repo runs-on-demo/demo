@@ -1,0 +1,98 @@
+name: RC verify / 800-job burst
+
+# 800 jobs queued at once (4 matrices of 200, GitHub's limit is 256 per
+# matrix), no max-parallel. Each job holds its runner for 5 minutes so all of
+# them can run at the same time. What we measure is how long the last job
+# waits for a runner. The first line of rc-verify/burst.txt picks the target:
+#   flex                          -> runs-on=<run>/runner=1cpu-linux-x64/env=demo
+#   fleet=<pool>/env=<env>        -> runs-on/fleet=<pool>/env=<env>
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/burst.txt
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.p.outputs.label }}
+      matrix: ${{ steps.p.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: rc-verify
+      - id: p
+        run: |
+          target=$(head -n1 rc-verify/burst.txt | tr -d '[:space:]')
+          case "$target" in
+            flex) label="runs-on=${GITHUB_RUN_ID}/runner=1cpu-linux-x64/env=demo" ;;
+            fleet=*/env=*) label="runs-on/${target}" ;;
+            *) echo "::error::unknown target '$target'"; exit 1 ;;
+          esac
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(python3 -c 'import json;print(json.dumps(list(range(1,201))))')" >> "$GITHUB_OUTPUT"
+          echo "Target: $label" >> "$GITHUB_STEP_SUMMARY"
+
+  b1:
+    needs: plan
+    name: b1 ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ needs.plan.outputs.label }}
+    timeout-minutes: 45
+    steps:
+      - name: Hold the runner
+        run: |
+          echo "runner=$RUNNER_NAME"
+          sleep 300
+
+  b2:
+    needs: plan
+    name: b2 ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ needs.plan.outputs.label }}
+    timeout-minutes: 45
+    steps:
+      - name: Hold the runner
+        run: |
+          echo "runner=$RUNNER_NAME"
+          sleep 300
+
+  b3:
+    needs: plan
+    name: b3 ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ needs.plan.outputs.label }}
+    timeout-minutes: 45
+    steps:
+      - name: Hold the runner
+        run: |
+          echo "runner=$RUNNER_NAME"
+          sleep 300
+
+  b4:
+    needs: plan
+    name: b4 ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ needs.plan.outputs.label }}
+    timeout-minutes: 45
+    steps:
+      - name: Hold the runner
+        run: |
+          echo "runner=$RUNNER_NAME"
+          sleep 300
