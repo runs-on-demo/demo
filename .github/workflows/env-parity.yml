@@ -23,6 +23,7 @@ jobs:
           echo "== RUNS_ON: $(env | grep -E '^(RUNS_ON_|GITHUB_HOST=)' | cut -d= -f1 | sort | tr '\n' ' ')"
           echo "== prefix=${RUNS_ON_S3_CACHE_REPO_PREFIX:-unset} version=${RUNS_ON_VERSION:-unset} user=${RUNS_ON_AGENT_USER:-unset}"
           echo "== RUNNER_TOOL_CACHE=${RUNNER_TOOL_CACHE:-unset} GITHUB_SERVER_URL=${GITHUB_SERVER_URL:-unset} GITHUB_API_URL=${GITHUB_API_URL:-unset} GITHUB_HOST=${GITHUB_HOST:-unset}"
+          echo "== home=${RUNS_ON_HOME:-unset} my-file=$(cat /runs-on/my-file 2>&1) FROM_ENV_CUSTOM=${FROM_ENV_CUSTOM:-unset}"; ls -la /runs-on
           echo "== /etc/profile tail"; tail -3 /etc/profile
           echo "== runner .env names"; sudo cut -d= -f1 /home/runner/.env 2>/dev/null | sort | tr '\n' ' '; echo
       - name: set job env and path
