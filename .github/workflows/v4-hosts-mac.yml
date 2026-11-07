@@ -44,3 +44,17 @@ jobs:
           dscacheutil -q host -a name github.com | grep -q ip_address && echo "DNS ok" || fail=1
           curl -fsS -o /dev/null https://github.com && echo "internet ok" || fail=1
           exit $fail
+
+  # The guest's AWS session renews under a long job (hostd every 20
+  # minutes), and the job survives a restart of runs-on-hostd meanwhile.
+  renewal:
+    runs-on: runs-on/fleet=v4-dev-hosts-mac/env=dev
+    timeout-minutes: 40
+    steps:
+      - name: Session renews
+        run: |
+          exp() { /usr/local/bin/runs-on-sandboxd guest-credentials | sed -n 's/.*"Expiration":"\([^"]*\)".*/\1/p'; }
+          first=$(exp); echo "session expires $first"
+          sleep 1380
+          second=$(exp); echo "session expires $second"
+          [ -n "$first" ] && [ "$first" != "$second" ]
