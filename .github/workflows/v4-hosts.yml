@@ -1,0 +1,28 @@
+name: v4 hosts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [v4-test/hosts]
+    paths:
+      - .github/workflows/v4-hosts.yml
+
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    runs-on: runs-on/fleet=v4-dev-hosts/env=dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Where am I
+        run: |
+          echo "runner: $RUNNER_NAME"
+          uname -a
+          nproc
+          free -m
+          cat /etc/os-release | head -2
+          ls
+      - name: sudo works
+        run: sudo apt-get --version | head -1
