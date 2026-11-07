@@ -52,3 +52,30 @@ jobs:
           getent hosts github.com >/dev/null && echo "DNS ok"
           curl -fsS -o /dev/null https://github.com && echo "internet ok"
           exit $fail
+
+  # Docker guests (a container per job): the internet, nothing private.
+  container-isolation:
+    runs-on: runs-on/fleet=v4-dev-hosts-ec2/env=dev
+    steps:
+      - name: Isolation from the host
+        run: |
+          gw=$(ip route | awk '/default/ {print $3}')
+          probe() { if timeout 3 bash -c "</dev/tcp/$1/$2" 2>/dev/null; then echo "REACHED $1:$2"; return 1; else echo "blocked $1:$2"; fi; }
+          fail=0
+          probe "$gw" 22 || fail=1               # the host itself
+          probe 10.1.0.1 443 || fail=1            # the VPC
+          probe 169.254.169.254 80 || fail=1      # the EC2 metadata service
+          getent hosts github.com >/dev/null && echo "DNS ok" || fail=1
+          curl -fsS -o /dev/null https://github.com && echo "internet ok" || fail=1
+          exit $fail
+
+  # More jobs than the host has slots (3): they wait for one, and start as
+  # others end.
+  waiting:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6]
+    runs-on: runs-on/fleet=v4-dev-hosts-ec2/env=dev
+    steps:
+      - run: echo "job ${{ matrix.n }} on $RUNS_ON_INSTANCE_ID at $(date -u +%T)"; sleep 45
