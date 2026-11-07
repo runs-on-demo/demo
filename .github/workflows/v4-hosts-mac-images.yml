@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pool: [v4-dev-hosts-mac]
+        pool: [v4-dev-hosts-mac, v4-dev-hosts-xcode]
     runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +33,13 @@ jobs:
           swift --version || true
           brew --version || true
           for t in git gh jq node python3 ruby; do printf '%s: ' $t; command -v $t || echo missing; done
+      - name: Xcode build and simulators
+        if: matrix.pool == 'v4-dev-hosts-xcode'
+        run: |
+          xcrun simctl list runtimes | head -5
+          mkdir -p /tmp/app && cd /tmp/app
+          swift package init --type library --name Lib >/dev/null
+          time xcodebuild -scheme Lib -destination 'platform=macOS' build 2>&1 | tail -3
       - name: Build a Swift package
         run: |
           mkdir -p /tmp/hello && cd /tmp/hello
