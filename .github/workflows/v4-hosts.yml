@@ -8,21 +8,31 @@ on:
       - .github/workflows/v4-hosts.yml
 
 jobs:
-  host:
+  linux-ec2:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3]
-    runs-on: runs-on/fleet=v4-dev-hosts/env=dev
+        n: [1, 2, 3, 4]
+    runs-on: runs-on/fleet=v4-dev-hosts-ec2/env=dev
     steps:
       - uses: actions/checkout@v4
       - name: Where am I
         run: |
-          echo "runner: $RUNNER_NAME"
+          echo "runner: $RUNNER_NAME on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE)"
           uname -a
-          nproc
-          free -m
-          cat /etc/os-release | head -2
-          ls
-      - name: sudo works
-        run: sudo apt-get --version | head -1
+          cat /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max || true
+          sudo apt-get --version | head -1
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2]
+    runs-on: runs-on/fleet=v4-dev-hosts-win/env=dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Where am I
+        run: |
+          "runner: $env:RUNNER_NAME on $env:RUNS_ON_INSTANCE_ID ($env:RUNS_ON_INSTANCE_TYPE)"
+          [Environment]::OSVersion
+          Get-ChildItem
+          git --version
