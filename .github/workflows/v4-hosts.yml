@@ -31,14 +31,24 @@ jobs:
     steps:
       - name: Docker inside the VM
         run: |
+          uname -r
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
-          # Firecracker's CI kernel has no nf_tables: use the legacy iptables.
-          sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
-          sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-          grep -E 'overlay|nf_tables' /proc/filesystems /proc/modules 2>/dev/null || true
           sudo sh -c 'dockerd > /tmp/dockerd.log 2>&1 &'
           for i in $(seq 30); do sudo docker info >/dev/null 2>&1 && break; sleep 1; done
-          sudo docker info --format '{{.ServerVersion}} {{.Driver}} {{.CgroupVersion}}' || { sudo grep -E 'level=(error|warn)|failed' /tmp/dockerd.log | tail -15; exit 1; }
-          sudo docker run --rm alpine:3.20 sh -c 'echo hello from a container in a Firecracker VM; nproc'
+          sudo docker info --format '{{.ServerVersion}} {{.Driver}} cgroup v{{.CgroupVersion}}' || { sudo grep -E 'level=(error|warn)|failed' /tmp/dockerd.log | tail -15; exit 1; }
+          sudo docker run --rm alpine:3.20 sh -c 'echo hello from a container in a Firecracker VM; nproc; wget -qO- https://api.github.com/zen'
           sudo docker run --rm --memory 256m alpine:3.20 cat /sys/fs/cgroup/memory.max
+          sudo docker run --rm -p 8080:80 -d --name web nginx:alpine >/dev/null && sleep 2 && curl -s localhost:8080 | grep -o '<title>.*</title>'
+      - name: Isolation from the host
+        run: |
+          gw=$(ip route | awk '/default/ {print $3}')
+          probe() { if timeout 3 bash -c "</dev/tcp/$1/$2" 2>/dev/null; then echo "REACHED $1:$2"; return 1; else echo "blocked $1:$2"; fi; }
+          fail=0
+          probe "$gw" 22 || fail=1          # the host itself
+          probe 10.1.0.1 443 || fail=1       # the VPC (a private network)
+          probe 169.254.170.2 80 || fail=1   # a link-local service
+          ping -6 -c1 -W2 ff02::1%eth0 >/dev/null 2>&1 && { echo "REACHED IPv6 link-local"; fail=1; } || echo "blocked IPv6"
+          getent hosts github.com >/dev/null && echo "DNS ok"
+          curl -fsS -o /dev/null https://github.com && echo "internet ok"
+          exit $fail
