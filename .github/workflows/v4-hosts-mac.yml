@@ -1,0 +1,46 @@
+name: v4 hosts macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [v4-test/hosts]
+    paths:
+      - .github/workflows/v4-hosts-mac.yml
+
+jobs:
+  # Three jobs on a Mac with two VM slots: the third waits for one.
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    runs-on: runs-on/fleet=v4-dev-hosts-mac/env=dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Where am I
+        run: |
+          echo "job ${{ matrix.n }}: runner $RUNNER_NAME on $RUNS_ON_INSTANCE_ID at $(date -u +%T)"
+          sw_vers
+          uname -m
+          sysctl -n hw.ncpu hw.memsize
+          whoami
+          sudo -n true && echo "passwordless sudo"
+          df -h / | tail -1
+          curl -sI https://github.com | head -1
+          sleep 30
+
+  mac-isolation:
+    runs-on: runs-on/fleet=v4-dev-hosts-mac/env=dev
+    steps:
+      - name: Isolation from the host
+        run: |
+          gw=$(route -n get default | awk '/gateway/ {print $2}')
+          probe() { if nc -z -G 3 "$1" "$2" 2>/dev/null; then echo "REACHED $1:$2"; return 1; else echo "blocked $1:$2"; fi; }
+          fail=0
+          probe "$gw" 22 || fail=1               # the Mac itself
+          probe 172.31.0.2 53 || fail=1           # the VPC's DNS
+          probe 172.31.0.1 443 || fail=1          # the VPC
+          probe 169.254.169.254 80 || fail=1      # the EC2 metadata service
+          dscacheutil -q host -a name github.com | grep -q ip_address && echo "DNS ok" || fail=1
+          curl -fsS -o /dev/null https://github.com && echo "internet ok" || fail=1
+          exit $fail
