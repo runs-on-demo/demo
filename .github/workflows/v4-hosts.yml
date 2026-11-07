@@ -33,8 +33,12 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
+          # Firecracker's CI kernel has no nf_tables: use the legacy iptables.
+          sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
+          sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+          grep -E 'overlay|nf_tables' /proc/filesystems /proc/modules 2>/dev/null || true
           sudo sh -c 'dockerd > /tmp/dockerd.log 2>&1 &'
           for i in $(seq 30); do sudo docker info >/dev/null 2>&1 && break; sleep 1; done
-          sudo docker info --format '{{.ServerVersion}} {{.Driver}} {{.CgroupVersion}}' || { sudo tail -30 /tmp/dockerd.log; exit 1; }
+          sudo docker info --format '{{.ServerVersion}} {{.Driver}} {{.CgroupVersion}}' || { sudo grep -E 'level=(error|warn)|failed' /tmp/dockerd.log | tail -15; exit 1; }
           sudo docker run --rm alpine:3.20 sh -c 'echo hello from a container in a Firecracker VM; nproc'
           sudo docker run --rm --memory 256m alpine:3.20 cat /sys/fs/cgroup/memory.max
