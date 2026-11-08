@@ -1,0 +1,30 @@
+name: v4 hosts macOS saved VMs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [v4-test/hosts]
+    paths:
+      - .github/workflows/v4-hosts-mac-saved.yml
+
+jobs:
+  # Four jobs on a Mac with two VM slots: each restored from its slot's
+  # saved VM (the first of each slot saves it).
+  restored:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4]
+    runs-on: runs-on/fleet=v4-dev-hosts-mac/env=dev
+    steps:
+      - name: Clock, boot and randomness
+        run: |
+          echo "job ${{ matrix.n }}: runner $RUNNER_NAME at $(date -u +%T)"
+          echo "booted: $(sysctl -n kern.boottime)"
+          remote=$(curl -fsSI https://www.google.com | awk -F': ' 'tolower($1)=="date" {print $2}' | tr -d '\r')
+          r=$(date -j -u -f '%a, %d %b %Y %H:%M:%S GMT' "$remote" +%s); l=$(date -u +%s)
+          echo "clock skew vs google.com: $((l - r)) s"
+          [ $((l - r)) -le 5 ] && [ $((r - l)) -le 5 ]
+          echo "random: $(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+          echo "address: $(ipconfig getifaddr en0)"
+          sleep 20
