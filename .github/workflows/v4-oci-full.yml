@@ -58,6 +58,8 @@ jobs:
           ls /imagegeneration
           sudo env INSTALLER_SCRIPT_FOLDER=/imagegeneration/installers HELPER_SCRIPTS=/imagegeneration/helpers IMAGE_FOLDER=/imagegeneration pwsh -NoProfile -c '
             Import-Module Pester
+            Import-Module /imagegeneration/tests/Helpers.psm1 -DisableNameChecking
+            $ErrorActionPreference = "Stop"
             $c = New-PesterConfiguration
             $c.Run.Path = "/imagegeneration/tests"
             $c.Run.PassThru = $true
