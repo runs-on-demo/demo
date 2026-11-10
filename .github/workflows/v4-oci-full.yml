@@ -10,9 +10,9 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x64, arm64]
-        variant: [stock, oci-a, oci-b] # a: rebuilt with the boot fixes, b: a + early root resize
+        variant: [stock, oci-b, oci-c] # b: boot fixes + early root resize, c: b built from the final scripts, with fewer reserved descriptor blocks
         rep: [1, 2, 3]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant != 'stock' && format('/ami={0}', fromJSON('{"x64-oci-a":"ami-037c42580ad9a3825","x64-oci-b":"ami-021dc8f84ac3d02fb","arm64-oci-a":"ami-01a1c002fbd417d45","arm64-oci-b":"ami-0745a10411426edb8"}')[format('{0}-{1}', matrix.arch, matrix.variant)]) || '' }}
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant != 'stock' && format('/ami={0}', fromJSON('{"x64-oci-b":"ami-021dc8f84ac3d02fb","x64-oci-c":"ami-09d4ff3c40ecc23c7","arm64-oci-b":"ami-0745a10411426edb8","arm64-oci-c":"ami-0d627a7750b318259"}')[format('{0}-{1}', matrix.arch, matrix.variant)]) || '' }}
     steps:
       - name: Boot profile
         run: |
