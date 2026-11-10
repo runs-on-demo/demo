@@ -1,0 +1,67 @@
+name: v4 OCI full AMI
+on:
+  push:
+    branches: [v4-test/oci-ami]
+  workflow_dispatch:
+jobs:
+  full:
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+        variant: [stock, oci]
+        rep: [1, 2, 3]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'oci' && (matrix.arch == 'x64' && '/ami=ami-0065f0a7da23c854d' || '/ami=ami-0dc429fd40234b5ad') || '' }}
+    steps:
+      - name: Boot profile
+        run: |
+          cat /etc/os-release | grep PRETTY; uname -r; cat /proc/cmdline
+          systemd-analyze || true
+          systemd-analyze critical-chain runs-on-sandboxd.service || true
+          sudo cat /var/lib/rolaunch/timings.json 2>/dev/null | head -c 2000 || true
+          echo; df -h / | tail -1
+          grep -E '^(ImageOS|ImageVersion)=' /etc/environment
+      - name: Docker
+        run: |
+          docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'
+          docker compose version; docker buildx version
+          docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}'
+          docker run --rm public.ecr.aws/docker/library/alpine:3.22 uname -a
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Tools
+        run: |
+          set +e
+          for c in "node --version" "python --version" "go version" "java -version" "ruby --version" "rustc --version" "php --version" "pwsh --version" "az version -o tsv" "aws --version" "gh --version" "kubectl version --client" "helm version --short" "clang --version" "cmake --version" "gcc --version" "mysql --version" "psql --version" "google-chrome --version" "podman --version" "yq --version" "zstd --version" "git lfs version"; do
+            printf '%-26s %s\n' "$c" "$($c 2>&1 | head -1)"
+          done
+          sudo -n true && echo sudo-ok
+      - name: Toolcache and packages
+        run: |
+          find /opt/hostedtoolcache -mindepth 2 -maxdepth 2 | sort
+          echo "packages=$(dpkg-query -W -f '${Package}\n' | wc -l) used=$(df -B1M --output=used / | tail -1)M"
+          sudo cat /imagegeneration/oci-test-failures.txt 2>/dev/null || echo "no build test failures file"
+      - name: runner-images Pester tests
+        if: matrix.rep == 1
+        continue-on-error: true
+        run: |
+          ls /imagegeneration
+          sudo env INSTALLER_SCRIPT_FOLDER=/imagegeneration/installers HELPER_SCRIPTS=/imagegeneration/helpers IMAGE_FOLDER=/imagegeneration pwsh -NoProfile -c '
+            Import-Module Pester
+            $c = New-PesterConfiguration
+            $c.Run.Path = "/imagegeneration/tests"
+            $c.Run.PassThru = $true
+            $c.Output.Verbosity = "None"
+            $r = Invoke-Pester -Configuration $c
+            "passed={0} failed={1} skipped={2} notrun={3}" -f $r.PassedCount, $r.FailedCount, $r.SkippedCount, $r.NotRunCount
+            $r.Failed | ForEach-Object { "FAIL: " + $_.ExpandedPath + " :: " + ($_.ErrorRecord | Select-Object -First 1).ToString().Split([Environment]::NewLine)[0] }'
