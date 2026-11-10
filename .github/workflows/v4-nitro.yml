@@ -1,0 +1,51 @@
+name: v4 nitro sandboxes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [v4-test/nitro]
+    paths:
+      - .github/workflows/v4-nitro.yml
+
+jobs:
+  # Pool v4-dev-hosts-kvm: the spike's Nitro host (ec2-nitro-x86, label kvm)
+  # is the tightest fit, so jobs land there first.
+  where:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1]
+    runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
+    steps:
+      - name: Where am I
+        run: |
+          echo "runner: $RUNNER_NAME on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE)"
+          uname -a; nproc; free -m
+          sudo dmesg | grep -i -m3 -E 'nitro|enclave|DMI:' || true
+          sudo apt-get --version | head -1
+          curl -sI https://github.com | head -1
+
+  docker:
+    runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
+    steps:
+      - name: Docker inside the sandbox
+        run: |
+          echo "on $RUNS_ON_INSTANCE_ID"; uname -r
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
+          sudo sh -c 'dockerd > /tmp/dockerd.log 2>&1 &'
+          for i in $(seq 30); do sudo docker info >/dev/null 2>&1 && break; sleep 1; done
+          sudo docker info --format '{{.ServerVersion}} {{.Driver}} cgroup v{{.CgroupVersion}}' || { sudo grep -E 'level=(error|warn)|failed' /tmp/dockerd.log | tail -15; exit 1; }
+          sudo docker run --rm alpine:3.20 sh -c 'echo hello from a container in a Nitro Sandbox; nproc; wget -qO- https://api.github.com/zen'
+          sudo docker run --rm -p 8080:80 -d --name web nginx:alpine >/dev/null && sleep 2 && curl -s localhost:8080 | grep -o '<title>.*</title>'
+      - name: Isolation from the host
+        run: |
+          gw=$(ip route | awk '/default/ {print $3}')
+          probe() { if timeout 3 bash -c "</dev/tcp/$1/$2" 2>/dev/null; then echo "REACHED $1:$2"; return 1; else echo "blocked $1:$2"; fi; }
+          fail=0
+          probe "$gw" 22 || fail=1
+          probe 10.1.0.1 443 || fail=1
+          probe 169.254.169.254 80 || fail=1
+          getent hosts github.com >/dev/null && echo "DNS ok"
+          curl -fsS -o /dev/null https://github.com && echo "internet ok"
+          exit $fail
