@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Runner session log
         run: |
-          grep -hE -A2 'Catch exception during create session|etriable exception|Sleeping for|skewed|already exists|Session created|Connecting to the' /home/runner/_diag/Runner_*.log | sed -E 's#https?://[^ ]+#<url>#g' | cut -c1-300 | head -40 || true
+          awk '/Connecting to the Broker Server/{on=1} on{print} /Session created/{exit}' /home/runner/_diag/Runner_*.log | sed -E 's#https?://[^ ]+#<url>#g; s#[A-Za-z0-9+/=_-]{28,}#<blob>#g' | cut -c1-260 | head -150 || true
       - run: |
           echo "flex ${{ matrix.n }} on $(hostname) $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
           sleep 90
