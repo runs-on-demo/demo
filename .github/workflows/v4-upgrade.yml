@@ -15,6 +15,9 @@ jobs:
         n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=ubuntu24-full-arm64
     steps:
+      - name: Runner session log
+        run: |
+          grep -hE -A2 'Catch exception during create session|etriable exception|Sleeping for|skewed|already exists|Session created|Connecting to the' /home/runner/_diag/Runner_*.log | sed -E 's#https?://[^ ]+#<url>#g' | cut -c1-300 | head -40 || true
       - run: |
           echo "flex ${{ matrix.n }} on $(hostname) $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
           sleep 90
