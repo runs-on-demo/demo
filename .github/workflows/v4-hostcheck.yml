@@ -1,0 +1,18 @@
+name: v4 host check
+
+# One job per enrolled dev host kind: proves a host still reads its command
+# queue once the queue has its policy.
+on:
+  push:
+    branches: [v4-test/hostcheck]
+
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        pool: [v4-dev-hosts-ec2, v4-dev-hosts-kvm, v4-dev-hosts-win]
+    runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
+    timeout-minutes: 10
+    steps:
+      - run: echo "on a host guest of ${{ matrix.pool }}"
