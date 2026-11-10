@@ -1,0 +1,33 @@
+name: v4 OCI AMI
+on:
+  push:
+    branches: [v4-test/oci-ami]
+  workflow_dispatch:
+jobs:
+  boot:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [minimal, oci]
+        rep: [1, 2, 3, 4, 5, 6]
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-x64/image=ubuntu26-minimal-x64${{ matrix.variant == 'oci' && '/ami=ami-0473dac317efd46d8' || '' }}
+    steps:
+      - name: Boot profile
+        run: |
+          cat /etc/os-release | grep PRETTY; uname -r
+          systemd-analyze || true
+          echo "== critical chain to sandboxd"
+          systemd-analyze critical-chain runs-on-sandboxd.service || true
+          echo "== rolaunch"
+          sudo journalctl -b -u rolaunch -o short-monotonic --no-pager | grep -vE "^\s*$" | cut -c1-200 | grep -E "Starting|resize|grown|prefetch|executing|processed|Finished" || true
+          echo "== sandboxd unit"
+          sudo journalctl -u runs-on-sandboxd -o short-monotonic --no-pager | head -3 | cut -c1-200 || true
+          sudo cat /var/lib/rolaunch/timings.json 2>/dev/null | head -c 2000 || true
+          echo; df -h / | tail -1
+      - name: Docker
+        run: |
+          docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'
+          docker run --rm public.ecr.aws/docker/library/alpine:3.22 uname -a
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: git --version; jq --version; curl --version | head -1; sudo -n true && echo sudo-ok
