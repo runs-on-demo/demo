@@ -15,19 +15,6 @@ jobs:
         n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=ubuntu24-full-arm64
     steps:
-      - name: Runner session log
-        run: |
-          awk '/Connecting to the Broker Server/{on=1} on{print} /Session created/{exit}' /home/runner/_diag/Runner_*.log | sed -E 's#https?://[^ ]+#<url>#g; s#[A-Za-z0-9+/=_-]{28,}#<blob>#g' | cut -c1-260 | head -150 || true
-      - name: Network at start
-        run: |
-          echo "uptime $(cut -d' ' -f1 /proc/uptime)"
-          nstat -az 2>/dev/null | grep -E 'TcpExtTCPSynRetrans|TcpRetransSegs|TcpExtTCPTimeouts|TcpAttemptFails|TcpActiveOpens|Ip6OutNoRoutes|Ip6OutRequests|IpOutRequests' || true
-          ip -6 -br addr | cut -c1-140 || true
-          ip -6 route show default | cut -c1-140 || true
-          sudo journalctl -b -o short-monotonic --no-pager -u systemd-networkd 2>/dev/null | grep -iE 'dhcpv6|gained|configured|ipv6|carrier|dhcpv4' | cut -c1-180 | head -30 || true
-          for h in $(grep -oE 'https://[^/"]+' /home/runner/.runner | sort -u | sed 's#https://##'); do echo "$h: $(getent ahosts $h | awk '{print $1}' | sort -u | tr '\n' ' ')"; done
-          sudo ss -tin state established '( dport = :443 )' 2>/dev/null | grep -cE '^\[|^[0-9]' || true
-          sudo ss -tn state established '( dport = :443 )' 2>/dev/null | awk 'NR>1{print $4}' | sed -E 's#:[0-9]+$##' | sort | uniq -c || true
       - run: |
           echo "flex ${{ matrix.n }} on $(hostname) $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
           sleep 90
