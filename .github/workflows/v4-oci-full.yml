@@ -12,7 +12,7 @@ jobs:
         arch: [x64, arm64]
         variant: [stock, oci]
         rep: [1, 2, 3]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'oci' && (matrix.arch == 'x64' && '/ami=ami-0f3192bc7090df5c4' || '/ami=ami-092bc8f214a25e845') || '' }}
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'oci' && (matrix.arch == 'x64' && '/ami=ami-096b037dd70de3c83' || '/ami=ami-0ae0ec22b66d9db27') || '' }}
     steps:
       - name: Boot profile
         run: |
