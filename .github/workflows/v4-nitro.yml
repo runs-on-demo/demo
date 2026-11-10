@@ -2,6 +2,10 @@ name: v4 nitro sandboxes
 
 on:
   workflow_dispatch:
+    inputs:
+      docker:
+        type: boolean
+        default: false
   push:
     branches: [v4-test/nitro]
     paths:
@@ -14,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1]
+        n: [1, 2]
     runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
     steps:
       - name: Where am I
@@ -26,6 +30,7 @@ jobs:
           curl -sI https://github.com | head -1
 
   docker:
+    if: github.event_name == 'push' || inputs.docker
     runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
     steps:
       - name: Docker inside the sandbox
@@ -45,7 +50,7 @@ jobs:
           fail=0
           probe "$gw" 22 || fail=1
           probe 10.1.0.1 443 || fail=1
-          probe 169.254.169.254 80 || fail=1
+          probe 169.254.170.2 80 || fail=1   # a link-local service (169.254.169.254 is Firecracker's own MMDS)
           getent hosts github.com >/dev/null && echo "DNS ok"
           curl -fsS -o /dev/null https://github.com && echo "internet ok"
           exit $fail
