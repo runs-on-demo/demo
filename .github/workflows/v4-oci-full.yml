@@ -12,7 +12,7 @@ jobs:
         arch: [x64, arm64]
         variant: [stock, oci]
         rep: [1, 2, 3]
-    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'oci' && (matrix.arch == 'x64' && '/ami=ami-0065f0a7da23c854d' || '/ami=ami-0dc429fd40234b5ad') || '' }}
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.variant }}-${{ matrix.rep }}/env=v4dev/runner=2cpu-linux-${{ matrix.arch }}/image=ubuntu26-full-${{ matrix.arch }}${{ matrix.variant == 'oci' && (matrix.arch == 'x64' && '/ami=ami-0f8679e1801d378b4' || '/ami=ami-0994bfb61e6448982') || '' }}
     steps:
       - name: Boot profile
         run: |
@@ -66,4 +66,4 @@ jobs:
             $c.Output.Verbosity = "None"
             $r = Invoke-Pester -Configuration $c
             "passed={0} failed={1} skipped={2} notrun={3}" -f $r.PassedCount, $r.FailedCount, $r.SkippedCount, $r.NotRunCount
-            $r.Failed | ForEach-Object { "FAIL: " + $_.ExpandedPath + " :: " + ($_.ErrorRecord | Select-Object -First 1).ToString().Split([Environment]::NewLine)[0] }'
+            $r.Failed | ForEach-Object { "FAIL: " + $_.ExpandedPath + " :: " + ("$($_.ErrorRecord | Select-Object -First 1)" -split "`n")[0] }'
