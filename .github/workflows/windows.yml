@@ -1,44 +1,65 @@
 name: v4 windows
-on: push
+
+# Windows on v4 runs what v3 runs: Magic Cache (extras=s3-cache), the
+# extras Windows does not have (the job runs without them), nested
+# virtualization, and the work folder on instance-store NVMe disks.
+on:
+  push:
+    branches: [v4-test/windows]
+
 jobs:
-  sticky:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows22-full-x64/sticky=10gb/extras=otel
+  cache:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows25-full-x64/extras=s3-cache
     steps:
-      - run: |
-          $ErrorActionPreference = 'Continue'
-          "::notice title=env::dir=$env:RUNS_ON_STICKYDISK_DIR ready=$env:RUNS_ON_STICKYDISK_READY_FILE unavailable=$env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE name=$env:RUNS_ON_STICKYDISK_NAME otlp=$env:OTEL_EXPORTER_OTLP_ENDPOINT"
-          trap { "::error title=step::$($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"; break }
-          $deadline = (Get-Date).AddMinutes(10)
-          while (-not (Test-Path $env:RUNS_ON_STICKYDISK_READY_FILE)) {
-            if (Test-Path $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE) {
-              $ErrorActionPreference = 'Continue'
-              Get-Disk | ForEach-Object { "::warning title=disk $($_.Number)::serial=$($_.SerialNumber) style=$($_.PartitionStyle) offline=$($_.IsOffline) ro=$($_.IsReadOnly) status=$($_.OperationalStatus) size=$($_.Size)" }
-              $d = Get-Disk | Where-Object { $_.SerialNumber -like 'vol*' -and $_.Number -ne 0 } | Select-Object -First 1
-              if ($d) {
-                $n = $d.Number
-                foreach ($c in @(
-                  { if ((Get-Disk -Number $n).IsOffline) { Set-Disk -Number $n -IsOffline $false } },
-                  { if ((Get-Disk -Number $n).IsReadOnly) { Set-Disk -Number $n -IsReadOnly $false } },
-                  { if ((Get-Disk -Number $n).PartitionStyle -eq 'RAW') { Initialize-Disk -Number $n -PartitionStyle GPT | Out-Null } },
-                  { if (-not (Get-Partition -DiskNumber $n -ErrorAction SilentlyContinue | Where-Object { $_.Type -eq 'Basic' })) { New-Partition -DiskNumber $n -UseMaximumSize -AssignDriveLetter:$false | Format-Volume -FileSystem NTFS -NewFileSystemLabel stickydisk -Confirm:$false | Out-Null } },
-                  { Get-Partition -DiskNumber $n | ForEach-Object { "::warning title=part::$($_.PartitionNumber) type=$($_.Type) size=$($_.Size) paths=$($_.AccessPaths -join ';')" } }
-                )) { try { & $c -ErrorAction Stop } catch { "::error title=diag::$c => $($_.Exception.Message)" } }
-              }
-              throw ("unavailable: " + (Get-Content -Raw $env:RUNS_ON_STICKYDISK_UNAVAILABLE_FILE))
-            }
-            if ((Get-Date) -gt $deadline) { throw 'no sticky disk after 10 min' }
-            Start-Sleep -Seconds 1
-          }
-          $m = Join-Path $env:RUNS_ON_STICKYDISK_DIR 'marker.txt'
-          if (Test-Path $m) { "::notice title=sticky::restored marker: " + (Get-Content -Raw $m).Trim() } else { '::notice title=sticky::no marker: blank disk' }
-          $v = Get-Volume -FilePath $env:RUNS_ON_STICKYDISK_DIR
-          "::notice title=volume::$($v.FileSystemLabel) $($v.FileSystem) size=$($v.Size) free=$($v.SizeRemaining)"
-          "run ${{ github.run_id }} at $(Get-Date -Format o)" | Out-File -FilePath $m -Encoding utf8
-        shell: pwsh
-      - run: |
-          "otlp=$env:OTEL_EXPORTER_OTLP_ENDPOINT completed-hook=$env:ACTIONS_RUNNER_HOOK_JOB_COMPLETED"
-          if (-not $env:OTEL_EXPORTER_OTLP_ENDPOINT) { throw 'no OTLP endpoint' }
-          $r = Invoke-WebRequest -UseBasicParsing -Method Post -ContentType 'application/json' -Body '{"resourceSpans":[]}' -Uri "$env:OTEL_EXPORTER_OTLP_ENDPOINT/v1/traces"
-          "::notice title=otlp::local OTLP receiver: $($r.StatusCode)"
-          1..3 | ForEach-Object { $x = 0; 1..2000000 | ForEach-Object { $x += $_ } }
-        shell: pwsh
+      - shell: pwsh
+        run: |
+          "::notice title=cache-env::cache=$env:ACTIONS_CACHE_URL results=$env:ACTIONS_RESULTS_URL magic=$env:RUNS_ON_MAGIC_CACHE_URL v2=$env:ACTIONS_CACHE_SERVICE_V2 archives=$env:ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE"
+          if (-not $env:RUNS_ON_MAGIC_CACHE_URL) { throw 'no Magic Cache URL in the job env' }
+          New-Item -ItemType Directory -Force cachedir | Out-Null
+          $b = New-Object byte[] (20MB); (New-Object Random).NextBytes($b)
+          [IO.File]::WriteAllBytes("$PWD\cachedir\blob.bin", $b)
+          "${{ github.run_id }}" | Out-File cachedir\marker.txt
+      - uses: actions/cache/save@v4
+        with:
+          path: cachedir
+          key: v4-windows-${{ github.run_id }}-${{ github.run_attempt }}
+      - shell: pwsh
+        run: Remove-Item -Recurse -Force cachedir
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: cachedir
+          key: v4-windows-${{ github.run_id }}-${{ github.run_attempt }}
+      - shell: pwsh
+        run: |
+          "::notice title=cache-restore::hit=${{ steps.restore.outputs.cache-hit }} marker=$((Get-Content -Raw cachedir\marker.txt -ErrorAction SilentlyContinue))"
+          if ('${{ steps.restore.outputs.cache-hit }}' -ne 'true') { throw 'the cache was not restored' }
+
+  linux-extras:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows25-full-x64/extras=s3-cache+git-cache+apt-cache+ecr-cache+ecr-pull-through+efs+tmpfs+otel
+    steps:
+      - shell: pwsh
+        run: |
+          "::notice title=linux-extras::ran on $env:RUNS_ON_INSTANCE_TYPE magic=$env:RUNS_ON_MAGIC_CACHE_URL otlp=$env:OTEL_EXPORTER_OTLP_ENDPOINT"
+
+  nested:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m8i.large/image=windows25-full-x64/nested-virt=true
+    steps:
+      - shell: pwsh
+        run: |
+          $c = Get-CimInstance Win32_ComputerSystem
+          $p = Get-CimInstance Win32_Processor | Select-Object -First 1
+          "::notice title=nested::instance=$env:RUNS_ON_INSTANCE_ID type=$env:RUNS_ON_INSTANCE_TYPE hypervisor=$($c.HypervisorPresent) vmx=$($p.VMMonitorModeExtensions) firmware=$($p.VirtualizationFirmwareEnabled) slat=$($p.SecondLevelAddressTranslationExtensions)"
+          Start-Sleep -Seconds 45
+
+  nvme:
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m6id.large/image=windows25-full-x64
+    steps:
+      - shell: pwsh
+        run: |
+          $v = Get-Volume -FileSystemLabel RunsOnEphemeral -ErrorAction SilentlyContinue
+          $part = Get-Partition | Where-Object { $_.AccessPaths -contains 'C:\actions-runner\_work\' }
+          "::notice title=nvme::type=$env:RUNS_ON_INSTANCE_TYPE volume=$($v.FileSystem) size=$($v.Size) free=$($v.SizeRemaining) mounted=$([bool]$part) workspace=$env:GITHUB_WORKSPACE"
+          Get-Disk | ForEach-Object { "disk $($_.Number): $($_.FriendlyName) $($_.Size) boot=$($_.IsBoot)" }
+          if (-not $part) { throw 'the work folder is not on the instance store' }
+          "x" | Out-File "$env:GITHUB_WORKSPACE\probe.txt"
