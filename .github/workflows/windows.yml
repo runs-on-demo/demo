@@ -1,65 +1,26 @@
 name: v4 windows
 
-# Windows on v4 runs what v3 runs: Magic Cache (extras=s3-cache), the
-# extras Windows does not have (the job runs without them), nested
-# virtualization, and the work folder on instance-store NVMe disks.
+# What growing C: costs at boot: sizes, and how long the storage cmdlets take.
 on:
   push:
     branches: [v4-test/windows]
 
 jobs:
-  cache:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows25-full-x64/extras=s3-cache
+  root:
+    strategy:
+      matrix:
+        image: [windows25-full-x64, windows22-full-x64]
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=${{ matrix.image }}
     steps:
       - shell: pwsh
         run: |
-          "::notice title=cache-env::cache=$env:ACTIONS_CACHE_URL results=$env:ACTIONS_RESULTS_URL magic=$env:RUNS_ON_MAGIC_CACHE_URL v2=$env:ACTIONS_CACHE_SERVICE_V2 archives=$env:ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE"
-          if (-not $env:RUNS_ON_MAGIC_CACHE_URL) { throw 'no Magic Cache URL in the job env' }
-          New-Item -ItemType Directory -Force cachedir | Out-Null
-          $b = New-Object byte[] (20MB); (New-Object Random).NextBytes($b)
-          [IO.File]::WriteAllBytes("$PWD\cachedir\blob.bin", $b)
-          "${{ github.run_id }}" | Out-File cachedir\marker.txt
-      - uses: actions/cache/save@v4
-        with:
-          path: cachedir
-          key: v4-windows-${{ github.run_id }}-${{ github.run_attempt }}
-      - shell: pwsh
-        run: Remove-Item -Recurse -Force cachedir
-      - id: restore
-        uses: actions/cache/restore@v4
-        with:
-          path: cachedir
-          key: v4-windows-${{ github.run_id }}-${{ github.run_attempt }}
-      - shell: pwsh
-        run: |
-          "::notice title=cache-restore::hit=${{ steps.restore.outputs.cache-hit }} marker=$((Get-Content -Raw cachedir\marker.txt -ErrorAction SilentlyContinue))"
-          if ('${{ steps.restore.outputs.cache-hit }}' -ne 'true') { throw 'the cache was not restored' }
-
-  linux-extras:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=windows25-full-x64/extras=s3-cache+git-cache+apt-cache+ecr-cache+ecr-pull-through+efs+tmpfs+otel
-    steps:
-      - shell: pwsh
-        run: |
-          "::notice title=linux-extras::ran on $env:RUNS_ON_INSTANCE_TYPE magic=$env:RUNS_ON_MAGIC_CACHE_URL otlp=$env:OTEL_EXPORTER_OTLP_ENDPOINT"
-
-  nested:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m8i.large/image=windows25-full-x64/nested-virt=true
-    steps:
-      - shell: pwsh
-        run: |
-          $c = Get-CimInstance Win32_ComputerSystem
-          $p = Get-CimInstance Win32_Processor | Select-Object -First 1
-          "::notice title=nested::instance=$env:RUNS_ON_INSTANCE_ID type=$env:RUNS_ON_INSTANCE_TYPE hypervisor=$($c.HypervisorPresent) vmx=$($p.VMMonitorModeExtensions) firmware=$($p.VirtualizationFirmwareEnabled) slat=$($p.SecondLevelAddressTranslationExtensions)"
-          Start-Sleep -Seconds 45
-
-  nvme:
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m6id.large/image=windows25-full-x64
-    steps:
-      - shell: pwsh
-        run: |
-          $v = Get-Volume -FileSystemLabel RunsOnEphemeral -ErrorAction SilentlyContinue
-          $part = Get-Partition | Where-Object { $_.AccessPaths -contains 'C:\actions-runner\_work\' }
-          "::notice title=nvme::type=$env:RUNS_ON_INSTANCE_TYPE volume=$($v.FileSystem) size=$($v.Size) free=$($v.SizeRemaining) mounted=$([bool]$part) workspace=$env:GITHUB_WORKSPACE"
-          Get-Disk | ForEach-Object { "disk $($_.Number): $($_.FriendlyName) $($_.Size) boot=$($_.IsBoot)" }
-          if (-not $part) { throw 'the work folder is not on the instance store' }
-          "x" | Out-File "$env:GITHUB_WORKSPACE\probe.txt"
+          $p = Get-Partition -DriveLetter C
+          $d = Get-Disk -Number 0
+          $t1 = (Measure-Command { $s = Get-PartitionSupportedSize -DriveLetter C }).TotalSeconds
+          $t2 = (Measure-Command { powershell.exe -NoProfile -NonInteractive -Command "(Get-PartitionSupportedSize -DriveLetter C).SizeMax" | Out-Null }).TotalSeconds
+          $t3 = (Measure-Command { powershell.exe -NoProfile -NonInteractive -Command "1" | Out-Null }).TotalSeconds
+          $t4 = (Measure-Command { "list volume" | diskpart | Out-Null }).TotalSeconds
+          $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('HH:mm:ss')
+          "::notice title=root ${{ matrix.image }}::partition=$($p.Size) disk=$($d.Size) max=$($s.SizeMax) supported-size=${t1}s cold-powershell-supported-size=${t2}s powershell-noop=${t3}s diskpart-list=${t4}s boot=$boot launched=$env:RUNS_ON_INSTANCE_LAUNCHED_AT"
+          $cfg = 'C:\ProgramData\Amazon\EC2Launch\config\agent-config.yml'
+          if (Test-Path $cfg) { "ec2launch tasks: " + ((Select-String -Path $cfg -Pattern 'task:\s*(\S+)' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }) -join ',') } else { 'no EC2Launch v2 config' }
