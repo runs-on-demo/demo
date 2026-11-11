@@ -31,3 +31,24 @@ jobs:
           summary=$(awk '{ g = ($1 == "one.one.one.one") ? "control" : "covered"; t = ($4 != 0) ? 99 : $3 - $2; n[g]++; if (t >= 0.9) a[g]++; if (t >= 2.5) b[g]++; if (t > m[g]) m[g] = t }
             END { for (g in n) printf "%s n=%d retried=%d slow=%d max=%.2f; ", g, n[g], a[g], b[g], m[g] }' /tmp/p)
           echo "::notice title=stall-probe::image=${{ matrix.image }} instance=${RUNS_ON_INSTANCE_ID:-?} up=${up}s reroll=${reroll:-none}; $summary"
+
+  summary:
+    needs: probe
+    if: always()
+    permissions:
+      actions: read
+      checks: read
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=ubuntu26-full-arm64
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUNS: ${{ github.run_id }} 42981710553
+    steps:
+      - run: |
+          for run in $RUNS; do
+            gh api "repos/${{ github.repository }}/actions/runs/$run/jobs" --paginate --jq '.jobs[] | select(.name | startswith("probe")) | .id' | while read -r id; do
+              gh api "repos/${{ github.repository }}/check-runs/$id/annotations" --jq '.[] | select(.title == "stall-probe") | .message' | sed "s/^/$run /"
+            done
+          done | tee /tmp/all
+          echo "== totals by image =="
+          awk '{ img = $2; for (i = 1; i <= NF; i++) { if ($i == "covered") g = "covered"; if ($i == "control") g = "control"; split($i, kv, "="); if (kv[1] == "n") n[img" "g] += kv[2]; if (kv[1] == "retried") { r[img" "g] += kv[2]; if (kv[2] > 0) inst[img" "g]++ } if (kv[1] == "slow") s[img" "g] += kv[2] } jobs[img]++ }
+            END { for (k in n) { split(k, p, " "); printf "%s: jobs=%d connections=%d retried=%d slow=%d instances_with_retry=%d\n", k, jobs[p[1]], n[k], r[k], s[k], inst[k] } }' /tmp/all | sort
