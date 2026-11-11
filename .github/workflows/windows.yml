@@ -1,6 +1,6 @@
 name: v4 windows
 
-# What growing C: costs at boot: sizes, and how long the storage cmdlets take.
+# C: at boot: the image's size is left alone, a larger volume= is grown into.
 on:
   push:
     branches: [v4-test/windows]
@@ -8,19 +8,19 @@ on:
 jobs:
   root:
     strategy:
+      fail-fast: false
       matrix:
-        image: [windows25-full-x64, windows22-full-x64]
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=${{ matrix.image }}
+        include:
+          - {image: windows25-full-x64, volume: "", want: 100}
+          - {image: windows25-full-x64, volume: "/volume=150gb", want: 150}
+          - {image: windows22-full-x64, volume: "", want: 50}
+          - {image: windows22-full-x64, volume: "/volume=80gb", want: 80}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=m7a/cpu=2/image=${{ matrix.image }}${{ matrix.volume }}
     steps:
       - shell: pwsh
         run: |
           $p = Get-Partition -DriveLetter C
-          $d = Get-Disk -Number 0
-          $t1 = (Measure-Command { $s = Get-PartitionSupportedSize -DriveLetter C }).TotalSeconds
-          $t2 = (Measure-Command { powershell.exe -NoProfile -NonInteractive -Command "(Get-PartitionSupportedSize -DriveLetter C).SizeMax" | Out-Null }).TotalSeconds
-          $t3 = (Measure-Command { powershell.exe -NoProfile -NonInteractive -Command "1" | Out-Null }).TotalSeconds
-          $t4 = (Measure-Command { "list volume" | diskpart | Out-Null }).TotalSeconds
-          $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('HH:mm:ss')
-          "::notice title=root ${{ matrix.image }}::partition=$($p.Size) disk=$($d.Size) max=$($s.SizeMax) supported-size=${t1}s cold-powershell-supported-size=${t2}s powershell-noop=${t3}s diskpart-list=${t4}s boot=$boot launched=$env:RUNS_ON_INSTANCE_LAUNCHED_AT"
-          $cfg = 'C:\ProgramData\Amazon\EC2Launch\config\agent-config.yml'
-          if (Test-Path $cfg) { "ec2launch tasks: " + ((Select-String -Path $cfg -Pattern 'task:\s*(\S+)' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }) -join ',') } else { 'no EC2Launch v2 config' }
+          $d = Get-Disk -Number $p.DiskNumber
+          $gib = [math]::Round($p.Size / 1GB)
+          "::notice title=root ${{ matrix.image }}${{ matrix.volume }}::C: is $gib GiB on a disk of $([math]::Round($d.Size / 1GB)) GiB, want ${{ matrix.want }}"
+          if ([math]::Abs($gib - ${{ matrix.want }}) -gt 1) { throw "C: is $gib GiB, want ${{ matrix.want }}" }
