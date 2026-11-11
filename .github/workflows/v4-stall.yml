@@ -13,10 +13,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [ubuntu24-full-arm64, ubuntu26-full-arm64]
-        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        image: [ubuntu24-full-arm64, ubuntu22-full-arm64]
+        reroll: ["", "+reroll"]
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=${{ matrix.image }}
     steps:
+      # The images' early-boot SYN re-roll (runner-images-for-aws,
+      # configure-syn-reroll.sh), loaded here by the job on images that do
+      # not ship it, for every destination on 443.
+      - if: matrix.reroll != ''
+        run: |
+          sudo nft -f - <<'NFT'
+          table ip ro_syn {
+            ct timeout syn1s { protocol tcp; l3proto ip; policy = { syn_sent : 1 }; }
+            chain post {
+              type nat hook postrouting priority srcnat - 1; policy accept;
+              meta oiftype ether tcp dport 443 counter ct timeout set "syn1s" masquerade fully-random
+            }
+          }
+          NFT
+          sudo sh -c 'echo 10 > /proc/sys/net/ipv4/tcp_syn_linear_timeouts && echo 1 > /proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal'
       - run: |
           up=$(cut -d' ' -f1 /proc/uptime)
           : > /tmp/p
@@ -30,7 +46,7 @@ jobs:
           reroll=$(sudo nft list chain ip ro_syn post 2>/dev/null | grep -o 'packets [0-9]*' | head -1)
           summary=$(awk '{ g = ($1 == "one.one.one.one") ? "control" : "covered"; t = ($4 != 0) ? 99 : $3 - $2; n[g]++; if (t >= 0.9) a[g]++; if (t >= 2.5) b[g]++; if (t > m[g]) m[g] = t }
             END { for (g in n) printf "%s n=%d retried=%d slow=%d max=%.2f; ", g, n[g], a[g], b[g], m[g] }' /tmp/p)
-          echo "::notice title=stall-probe::image=${{ matrix.image }} instance=${RUNS_ON_INSTANCE_ID:-?} up=${up}s reroll=${reroll:-none}; $summary"
+          echo "::notice title=stall-probe::image=${{ matrix.image }}${{ matrix.reroll }} kernel=$(uname -r) nft=$(nft --version 2>/dev/null | cut -d' ' -f2) instance=${RUNS_ON_INSTANCE_ID:-?} up=${up}s reroll=${reroll:-none}; $summary"
 
   summary:
     needs: probe
@@ -42,7 +58,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=ubuntu26-full-arm64
     env:
       GH_TOKEN: ${{ github.token }}
-      RUNS: ${{ github.run_id }} 42981710553 42981863447
+      RUNS: ${{ github.run_id }}
     steps:
       - run: |
           for run in $RUNS; do
