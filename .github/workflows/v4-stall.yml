@@ -1,0 +1,33 @@
+name: v4 stall probe
+
+# Paired probe of a new instance's first connections: the same wave on an
+# image with the early-boot SYN re-roll (Ubuntu 26) and one without
+# (Ubuntu 24). Each job opens connections for 15 s and reports how many
+# took a retry, to destinations the re-roll covers and to one it does not.
+on:
+  push:
+    branches: [v4-test/stall]
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu24-full-arm64, ubuntu26-full-arm64]
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=${{ matrix.image }}
+    steps:
+      - run: |
+          up=$(cut -d' ' -f1 /proc/uptime)
+          : > /tmp/p
+          for r in $(seq 1 15); do
+            for h in github.com api.github.com broker.actions.githubusercontent.com s3.us-east-1.amazonaws.com dynamodb.us-east-1.amazonaws.com one.one.one.one; do
+              curl -s -o /dev/null --connect-timeout 30 -m 35 -w "$h %{time_namelookup} %{time_connect} %{exitcode}\n" "https://$h/" >> /tmp/p &
+            done
+            sleep 1
+          done
+          wait
+          reroll=$(sudo nft list chain ip ro_syn post 2>/dev/null | grep -o 'packets [0-9]*' | head -1)
+          summary=$(awk '{ g = ($1 == "one.one.one.one") ? "control" : "covered"; t = ($4 != 0) ? 99 : $3 - $2; n[g]++; if (t >= 0.9) a[g]++; if (t >= 2.5) b[g]++; if (t > m[g]) m[g] = t }
+            END { for (g in n) printf "%s n=%d retried=%d slow=%d max=%.2f; ", g, n[g], a[g], b[g], m[g] }' /tmp/p)
+          echo "::notice title=stall-probe::image=${{ matrix.image }} instance=${RUNS_ON_INSTANCE_ID:-?} up=${up}s reroll=${reroll:-none}; $summary"
