@@ -38,10 +38,11 @@ jobs:
     permissions:
       actions: read
       checks: read
+      contents: write
     runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g/cpu=2/image=ubuntu26-full-arm64
     env:
       GH_TOKEN: ${{ github.token }}
-      RUNS: ${{ github.run_id }} 42981710553
+      RUNS: ${{ github.run_id }} 42981710553 42981863447
     steps:
       - run: |
           for run in $RUNS; do
@@ -51,4 +52,6 @@ jobs:
           done | tee /tmp/all
           echo "== totals by image =="
           awk '{ img = $2; for (i = 1; i <= NF; i++) { if ($i == "covered") g = "covered"; if ($i == "control") g = "control"; split($i, kv, "="); if (kv[1] == "n") n[img" "g] += kv[2]; if (kv[1] == "retried") { r[img" "g] += kv[2]; if (kv[2] > 0) inst[img" "g]++ } if (kv[1] == "slow") s[img" "g] += kv[2] } jobs[img]++ }
-            END { for (k in n) { split(k, p, " "); printf "%s: jobs=%d connections=%d retried=%d slow=%d instances_with_retry=%d\n", k, jobs[p[1]], n[k], r[k], s[k], inst[k] } }' /tmp/all | sort
+            END { for (k in n) { split(k, p, " "); printf "%s: jobs=%d connections=%d retried=%d slow=%d instances_with_retry=%d\n", k, jobs[p[1]], n[k], r[k], s[k], inst[k] } }' /tmp/all | sort | tee /tmp/totals
+          { cat /tmp/totals; echo; cat /tmp/all; } > /tmp/out
+          gh api -X PUT "repos/${{ github.repository }}/contents/stall/${{ github.run_id }}.txt" -f message="stall probe ${{ github.run_id }}" -f branch=v4-test/stall-results -f content="$(base64 -w0 /tmp/out)" --silent
