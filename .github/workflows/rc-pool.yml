@@ -1,0 +1,32 @@
+name: RC verify / hot pool burst (#715)
+
+# 60 jobs at once on the rc-pool-demo hot pool (runs-on-demo/.github-private,
+# set hot: 60 before the run and back to 0 after). Each pick should reuse a
+# shared pool listing, and no instance may serve two jobs. Started by a push
+# that touches rc-verify/v361/pool.txt on a non-main branch.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v361/pool.txt
+
+permissions:
+  contents: read
+
+jobs:
+  pick:
+    name: pool job ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60]
+    runs-on: runs-on=${{ github.run_id }}/pool=rc-pool-demo/env=demo
+    timeout-minutes: 30
+    steps:
+      - name: Pool instance
+        run: |
+          echo "pool=${RUNS_ON_POOL_NAME:-} standby=${RUNS_ON_POOL_STANDBY_TYPE:-} instance=${RUNS_ON_INSTANCE_ID:-} launched=${RUNS_ON_INSTANCE_LAUNCHED_AT:-}"
+          echo "::notice title=pool ${{ matrix.n }}::${RUNS_ON_INSTANCE_ID:-none} ${RUNS_ON_POOL_STANDBY_TYPE:-}"
+          test -n "${RUNS_ON_POOL_NAME:-}"
+          sleep 60
