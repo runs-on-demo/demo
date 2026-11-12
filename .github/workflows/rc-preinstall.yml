@@ -26,7 +26,11 @@ jobs:
           set -euo pipefail
           cat /var/log/rc-preinstall-env.txt
           grep -q '^RUNS_ON_' /var/log/rc-preinstall-env.txt
-          grep -q '^RUNS_ON_RUNNER_NAME=\|^RUNS_ON_INSTANCE_ID=\|^RUNS_ON_JOB_ID=' /var/log/rc-preinstall-env.txt
+          # Agent variables (not among the user-data exports) reached a child.
+          grep -q '^RUNS_ON_INSTANCE_TYPE=' /var/log/rc-preinstall-env.txt
+          grep -q '^RUNS_ON_AWS_AZ=' /var/log/rc-preinstall-env.txt
+          # A variable the script sets itself without export stays local.
+          ! grep -q '^RC_SCRIPT_LOCAL=' /var/log/rc-preinstall-env.txt
       - name: tmpfs grew by the swap file, zram off
         run: |
           set -euo pipefail
