@@ -116,9 +116,10 @@ jobs:
         run: |
           set -euo pipefail
           base="${NX_SELF_HOSTED_REMOTE_CACHE_SERVER%/}"
-          key="rc-nx-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          # Nx hashes are 1 to 128 letters and digits.
+          key="rcnxprobe${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
           head -c 1024 /dev/urandom > "$RUNNER_TEMP/blob"
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X GET "$base/v1/cache/missing-$key")" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X GET "$base/v1/cache/missing$key")" = 404
           c1=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary @"$RUNNER_TEMP/blob" -H 'Content-Type: application/octet-stream' "$base/v1/cache/$key")
           c2=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary @"$RUNNER_TEMP/blob" -H 'Content-Type: application/octet-stream' "$base/v1/cache/$key")
           echo "first PUT $c1, second PUT $c2"
