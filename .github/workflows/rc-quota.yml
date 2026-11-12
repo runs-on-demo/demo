@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3, 4, 5, 6, 7]
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     runs-on: runs-on=${{ github.run_id }}-quota-${{ matrix.n }}/family=g4dn.xlarge/spot=false/image=ubuntu26-full-x64/env=demo
     timeout-minutes: 30
     steps:
