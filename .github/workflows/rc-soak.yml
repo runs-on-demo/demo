@@ -9,7 +9,7 @@ on:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/soak.txt
+      - rc-verify/v361/soak.txt
 
 permissions:
   contents: read

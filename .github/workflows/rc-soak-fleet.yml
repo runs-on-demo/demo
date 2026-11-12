@@ -15,7 +15,7 @@ on:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/soak-fleet.txt
+      - rc-verify/v361/soak-fleet.txt
 
 permissions:
   contents: read

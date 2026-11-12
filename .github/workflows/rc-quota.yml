@@ -10,7 +10,7 @@ on:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/quota.txt
+      - rc-verify/v361/quota.txt
 
 permissions:
   contents: read

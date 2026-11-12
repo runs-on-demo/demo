@@ -1,13 +1,13 @@
 name: RC verify / features
 
 # Targeted checks of the v3.6.0 release notes on the env=demo stack. Started
-# by a push that touches rc-verify/features.txt on a non-main branch.
+# by a push that touches rc-verify/v361/features.txt on a non-main branch.
 on:
   workflow_dispatch:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/features.txt
+      - rc-verify/v361/features.txt
 
 permissions:
   contents: read

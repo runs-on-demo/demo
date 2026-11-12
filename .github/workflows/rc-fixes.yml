@@ -1,0 +1,195 @@
+name: RC verify / v3.6.1 fixes
+
+# End-to-end checks of the fixes merged to main since v3.6.0, on the env=demo
+# stack. Started by a push that touches rc-verify/v361/fixes.txt on a non-main
+# branch. Each job names the monorepo PR it checks.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v361/fixes.txt
+
+permissions:
+  contents: read
+
+env:
+  SCOPED_CACHE_EXPECTED: "true"
+
+jobs:
+  stack:
+    name: Stack version
+    runs-on: runs-on=${{ github.run_id }}-stack/runner=1cpu-linux-x64/env=demo
+    steps:
+      - run: curl -fsS http://127.0.0.1:6871/_runs-on/diagnostics | jq '{version} + (.agent // {})' || true
+
+  # ------------------------------------------------ #711 full-history git fetches
+  # A fetch-depth: 0 checkout of this repo, then a new annotated tag (new tip,
+  # new cache key), then the same checkout again: the second one should start
+  # from the first one's stored response (a partial hit).
+  git-history-base:
+    name: "#711 full-history fetch (base)"
+    runs-on: runs-on=${{ github.run_id }}-gh-base/runner=2cpu-linux-x64/extras=git-cache/env=demo
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Counters
+        run: |
+          set -euo pipefail
+          sleep 5
+          stats=$(curl -fsS http://127.0.0.1:6871/_runs-on/git-cache); jq . <<<"$stats"
+          jq -e '.errors == 0 and .unscoped == 0 and .fetches >= 1' <<<"$stats"
+      - name: Add a new tip (annotated tag)
+        run: |
+          set -euo pipefail
+          git config user.name "rc-verify"; git config user.email "rc-verify@users.noreply.github.com"
+          git tag -a "rc-gitcache-${GITHUB_RUN_ID}" -m "rc verify ${GITHUB_RUN_ID}" "$GITHUB_SHA"
+          git push origin "refs/tags/rc-gitcache-${GITHUB_RUN_ID}"
+
+  git-history-partial:
+    name: "#711 full-history fetch (partial hit)"
+    needs: git-history-base
+    runs-on: runs-on=${{ github.run_id }}-gh-partial/runner=2cpu-linux-x64/extras=git-cache/env=demo
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Partial hit, and the new tag is there
+        run: |
+          set -euo pipefail
+          git rev-parse "refs/tags/rc-gitcache-${GITHUB_RUN_ID}"
+          git fsck --connectivity-only
+          stats=$(curl -fsS http://127.0.0.1:6871/_runs-on/git-cache); jq . <<<"$stats"
+          jq -e '.errors == 0 and .partialHits >= 1' <<<"$stats"
+      - name: Remove the tag
+        if: always()
+        run: git push origin ":refs/tags/rc-gitcache-${GITHUB_RUN_ID}" || true
+
+  # --------------------------------------- #717 one leader, #710 job-log summary
+  # Six runners miss the same kubernetes fetch at once: one leads, the others
+  # wait behind it once. The "Git cache:" line (#710) is printed by the
+  # job-completed hook and checked in the job logs afterwards.
+  git-leader:
+    name: "#717 concurrent miss x${{ matrix.n }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6]
+    runs-on: runs-on=${{ github.run_id }}-gl-${{ matrix.n }}/runner=4cpu-linux-x64/extras=git-cache/env=demo
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: kubernetes/kubernetes
+          ref: master
+          fetch-depth: 1
+          path: k8s
+      - name: Counters
+        run: |
+          set -euo pipefail
+          sleep 5
+          stats=$(curl -fsS http://127.0.0.1:6871/_runs-on/git-cache); jq . <<<"$stats"
+          jq -e '.errors == 0 and .fetches >= 1' <<<"$stats"
+          echo "::notice title=git-leader ${{ matrix.n }}::$(jq -c '{hits,misses,claims,waits,waitHits,waitFallbacks,writes,racesLost}' <<<"$stats")"
+
+  # --------------------------------------------------------- #700 Nx remote cache
+  nx-save:
+    name: "#700 remote_cache nx (save)"
+    runs-on: runs-on=${{ github.run_id }}-nx/runner=2cpu-linux-x64/extras=s3-cache/env=demo
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: runs-on/action@dist/main
+        with:
+          remote_cache: nx
+      - uses: ./.github/actions/rc-nx
+        with:
+          workspace: rc-nx-${{ github.run_id }}-${{ github.run_attempt }}
+          uploads: "true"
+          scoped_cache_expected: ${{ env.SCOPED_CACHE_EXPECTED }}
+      - name: A second write of the same entry is refused (409), a missing one is a 404
+        run: |
+          set -euo pipefail
+          base="${NX_SELF_HOSTED_REMOTE_CACHE_SERVER%/}"
+          key="rc-nx-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          head -c 1024 /dev/urandom > "$RUNNER_TEMP/blob"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X GET "$base/v1/cache/missing-$key")" = 404
+          c1=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary @"$RUNNER_TEMP/blob" -H 'Content-Type: application/octet-stream' "$base/v1/cache/$key")
+          c2=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary @"$RUNNER_TEMP/blob" -H 'Content-Type: application/octet-stream' "$base/v1/cache/$key")
+          echo "first PUT $c1, second PUT $c2"
+          [[ "$c1" == 200 || "$c1" == 201 || "$c1" == 202 || "$c1" == 204 ]]
+          test "$c2" = 409
+
+  nx-restore:
+    name: "#700 remote_cache nx (restore)"
+    needs: nx-save
+    runs-on: runs-on=${{ github.run_id }}-nx/runner=2cpu-linux-x64/extras=s3-cache/env=demo
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: runs-on/action@dist/main
+        with:
+          remote_cache: nx
+      - uses: ./.github/actions/rc-nx
+        with:
+          workspace: rc-nx-${{ github.run_id }}-${{ github.run_attempt }}
+          uploads: "false"
+          scoped_cache_expected: ${{ env.SCOPED_CACHE_EXPECTED }}
+
+  # -------------------------------------------------- #701 tmpfs size, no swap
+  tmpfs-size:
+    name: "#701 extras=tmpfs size without disk swap"
+    runs-on: runs-on=${{ github.run_id }}-tmpfs/runner=2cpu-linux-x64/extras=tmpfs/env=demo
+    steps:
+      - name: tmpfs = RAM - (768 MiB + RAM/32, at most RAM/2)
+        run: |
+          set -euo pipefail
+          cat /proc/swaps; df -B1 /mnt/tmpfs; cat /run/runs-on-tmpfs-size || true
+          mem_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+          total=$((mem_kb * 1024))
+          reserve=$((768 * 1024 * 1024 + total / 32)); half=$((total / 2)); [ "$reserve" -gt "$half" ] && reserve=$half
+          want=$((total - reserve))
+          got=$(df -B1 --output=size /mnt/tmpfs | tail -1 | tr -d ' ')
+          echo "want=$want got=$got"
+          diff=$(( got > want ? got - want : want - got ))
+          [ "$diff" -lt $((8 * 1024 * 1024)) ]
+          if ! grep -v -e '^Filename' -e zram /proc/swaps | grep -q .; then echo "no disk swap, zram kept: $(grep -c zram /proc/swaps)"; fi
+
+  # ----------------------------------- #702 control-plane tags denied to runners
+  tag-deny:
+    name: "#702 runner cannot write control-plane tags"
+    runs-on: runs-on=${{ github.run_id }}-tags/runner=1cpu-linux-x64/env=demo
+    steps:
+      - run: |
+          set -uo pipefail
+          tok=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
+          iid=$(curl -fsS -H "X-aws-ec2-metadata-token: $tok" http://169.254.169.254/latest/meta-data/instance-id)
+          region=$(curl -fsS -H "X-aws-ec2-metadata-token: $tok" http://169.254.169.254/latest/meta-data/placement/region)
+          fail=0
+          for key in runs-on-stack-name runs-on-terminate runs-on-launch-token; do
+            if out=$(aws ec2 create-tags --region "$region" --resources "$iid" --tags "Key=$key,Value=rc-forged" 2>&1); then
+              echo "::error::$key was writable"; fail=1
+            else
+              echo "$key denied: $(echo "$out" | grep -o 'UnauthorizedOperation\|AccessDenied' | head -1)"
+            fi
+          done
+          # A tag the agent writes is still allowed.
+          aws ec2 create-tags --region "$region" --resources "$iid" --tags "Key=rc-verify-probe,Value=ok" || { echo "::error::own probe tag refused"; fail=1; }
+          exit $fail
+
+  # ------------------------------------------------------- #718 Windows boot
+  windows:
+    name: "#718 Windows boot (C: grow check)"
+    runs-on: runs-on=${{ github.run_id }}-win/family=m7i/ram=8/image=windows25-full-x64/env=demo
+    timeout-minutes: 30
+    steps:
+      - shell: pwsh
+        run: |
+          Get-Partition -DriveLetter C | Format-List Size,Offset
+          Get-Disk | Format-List Number,Size,AllocatedSize
+          Get-Volume -DriveLetter C | Format-List Size,SizeRemaining

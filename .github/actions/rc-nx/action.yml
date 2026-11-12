@@ -1,0 +1,71 @@
+name: Nx through Magic Cache
+description: >
+  Run a two-project Nx workspace through the agent's Nx remote cache,
+  configured by runs-on/action's `remote_cache: nx`, and check what went to
+  or came from Magic Cache.
+
+inputs:
+  workspace:
+    description: A name unique to the run, so its task hashes are new to the cache.
+    required: true
+  uploads:
+    description: '"true" in the job that runs and uploads, "false" in a later job that restores every task from Magic Cache.'
+    required: true
+  scoped_cache_expected:
+    description: Whether the stack vends brokered scoped-cache credentials.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: runs-on/action points Nx at the agent
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "${NX_SELF_HOSTED_REMOTE_CACHE_SERVER:-}" == */_runs-on/tools/*/nx ]]
+
+    # Both jobs run the same sources; the name makes their hashes the run's
+    # own.
+    - name: Create a workspace
+      shell: bash
+      env:
+        WORKSPACE: ${{ inputs.workspace }}
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/e2e-nx"
+        rm -rf "${dir}"
+        mkdir -p "${dir}/packages/base" "${dir}/packages/app"
+        cd "${dir}"
+        printf '{"name":"e2e-nx","private":true,"devDependencies":{"nx":"24.0.4"}}\n' > package.json
+        printf '{"targetDefaults":{"build":{"cache":true,"dependsOn":["^build"],"outputs":["{projectRoot}/dist"]}}}\n' > nx.json
+        printf 'node_modules\ndist\n.nx\n' > .gitignore
+        printf '%s\n' "${WORKSPACE}" > packages/base/seed.txt
+        printf '{"name":"base","targets":{"build":{"command":"mkdir -p dist && cp seed.txt dist/out.txt","options":{"cwd":"packages/base"}}}}\n' > packages/base/project.json
+        printf '{"name":"app","implicitDependencies":["base"],"targets":{"build":{"command":"mkdir -p dist && cp ../base/dist/out.txt dist/out.txt","options":{"cwd":"packages/app"}}}}\n' > packages/app/project.json
+        npm install --no-audit --no-fund --loglevel=error
+
+    - name: Run through Nx
+      shell: bash
+      env:
+        UPLOADS: ${{ inputs.uploads }}
+        WORKSPACE: ${{ inputs.workspace }}
+        # A local cache of its own, so a hit can only come from Magic Cache.
+        NX_CACHE_DIRECTORY: ${{ runner.temp }}/e2e-nx-cache
+        NX_DAEMON: "false"
+        NX_NO_CLOUD: "true"
+      run: |
+        set -euo pipefail
+        cd "${RUNNER_TEMP}/e2e-nx"
+        rm -rf "${NX_CACHE_DIRECTORY}"
+        npx nx run-many -t build 2>&1 | tee build.log
+        if [[ "${UPLOADS}" == "true" ]]; then
+          grep -q 'Cache: *0/2 hit' build.log
+        else
+          grep -q 'for 2 out of 2 tasks' build.log
+        fi
+        test "$(cat packages/app/dist/out.txt)" = "${WORKSPACE}"
+
+    - uses: ./.github/actions/rc-magic-cache-objects
+      with:
+        operation: ${{ inputs.uploads == 'true' && 'write' || 'read' }}
+        scoped_cache_expected: ${{ inputs.scoped_cache_expected }}

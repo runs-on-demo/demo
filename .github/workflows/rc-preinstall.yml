@@ -1,0 +1,46 @@
+name: RC verify / preinstall (#699, #701)
+
+# Needs the rc-preinstall runner in runs-on-demo/.github-private: ubuntu24,
+# extras=tmpfs, and a preinstall that adds an 8 GiB swap file and dumps the
+# environment its child processes see. Started by a push that touches
+# rc-verify/v361/preinstall.txt on a non-main branch.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v361/preinstall.txt
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------- #699 and #701 with a preinstall
+  # Needs the rc-preinstall runner in runs-on-demo/.github-private.
+  preinstall-env-swap:
+    name: "#699 env in preinstall children, #701 tmpfs counts the preinstall swap"
+    runs-on: runs-on=${{ github.run_id }}-pre/runner=rc-preinstall/env=demo
+    steps:
+      - name: Preinstall children saw the agent env
+        run: |
+          set -euo pipefail
+          cat /var/log/rc-preinstall-env.txt
+          grep -q '^RUNS_ON_' /var/log/rc-preinstall-env.txt
+          grep -q '^RUNS_ON_RUNNER_NAME=\|^RUNS_ON_INSTANCE_ID=\|^RUNS_ON_JOB_ID=' /var/log/rc-preinstall-env.txt
+      - name: tmpfs grew by the swap file, zram off
+        run: |
+          set -euo pipefail
+          cat /proc/swaps; df -B1 /mnt/tmpfs; cat /run/runs-on-tmpfs-size
+          ! grep -q zram /proc/swaps
+          grep -q /swapfile /proc/swaps
+          mem_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+          swap_kb=$(awk '$1=="/swapfile"{print $3}' /proc/swaps)
+          total=$((mem_kb * 1024))
+          reserve=$((768 * 1024 * 1024 + total / 32)); half=$((total / 2)); [ "$reserve" -gt "$half" ] && reserve=$half
+          want=$((total - reserve + swap_kb * 1024))
+          got=$(df -B1 --output=size /mnt/tmpfs | tail -1 | tr -d ' ')
+          echo "want=$want got=$got"
+          diff=$(( got > want ? got - want : want - got ))
+          [ "$diff" -lt $((8 * 1024 * 1024)) ]
+          [ "$got" -gt "$total" ]
+
