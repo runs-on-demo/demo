@@ -1,0 +1,56 @@
+name: v4 nitro hosts
+
+on:
+  push:
+    branches: [v4-test/nitro-hosts]
+    paths:
+      - .github/workflows/v4-nitro-hosts.yml
+
+# run: 1
+jobs:
+  # Pool v4-nitro of stack runs-on-v4-nitro: one Nitro host of 6 slots
+  # (2 vCPUs, 4 GiB each), overflow to an EC2 runner. 10 jobs at once: 6 on
+  # the host, 4 on EC2.
+  where:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    runs-on: runs-on/fleet=v4-nitro/env=nitro
+    steps:
+      - name: Where am I
+        run: |
+          echo "runner: $RUNNER_NAME on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE)"
+          uname -r; nproc; free -m | sed -n 2p
+          cat /proc/cmdline
+          sleep 45
+
+  docker:
+    needs: where
+    runs-on: runs-on/fleet=v4-nitro/env=nitro
+    steps:
+      - name: Docker inside the sandbox, started by the guest
+        run: |
+          echo "on $RUNS_ON_INSTANCE_ID"; uname -r
+          for i in $(seq 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+          docker info --format '{{.ServerVersion}} {{.Driver}} cgroup v{{.CgroupVersion}}' || { sudo tail -20 /var/log/dockerd.log; exit 1; }
+          docker run --rm alpine:3.20 sh -c 'echo hello from a container in a Nitro Sandbox; nproc; wget -qO- https://api.github.com/zen'
+          docker run --rm -p 8080:80 -d --name web nginx:alpine >/dev/null && sleep 2 && curl -s localhost:8080 | grep -o '<title>.*</title>'
+          printf 'FROM alpine:3.20\nRUN echo built > /built\n' | docker build -q -t t - && docker run --rm t cat /built
+      - name: Isolation from the host
+        run: |
+          gw=$(ip route | awk '/default/ {print $3}')
+          probe() { if timeout 3 bash -c "</dev/tcp/$1/$2" 2>/dev/null; then echo "REACHED $1:$2"; return 1; else echo "blocked $1:$2"; fi; }
+          fail=0
+          probe "$gw" 22 || fail=1
+          probe 10.1.0.1 443 || fail=1
+          probe 169.254.170.2 80 || fail=1
+          getent hosts github.com >/dev/null && echo "DNS ok"
+          curl -fsS -o /dev/null https://github.com && echo "internet ok"
+          exit $fail
+      - uses: actions/checkout@v4
+      - name: Disk and memory under load
+        run: |
+          df -h / | tail -1
+          dd if=/dev/zero of=/home/runner/fill bs=1M count=2048 status=none && rm /home/runner/fill && echo "wrote 2 GiB"
+          python3 -c "b=bytearray(3<<30); print('touched 3 GiB')" 2>/dev/null || echo "no python3 in the image"
