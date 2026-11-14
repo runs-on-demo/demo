@@ -45,6 +45,9 @@ jobs:
           case "$RUNS_ON_INSTANCE_ID" in host-*) ;; *) echo "not on a host"; exit 1;; esac
           grep -x 'ImageOS=ubuntu26' /etc/environment
           grep ImageVersion /etc/environment
+          # The job itself gets the image's /etc/environment, as on an EC2 runner.
+          test "$ImageOS" = ubuntu26
+          case ":$PATH:" in *:/opt/pipx_bin:*) ;; *) echo "pipx is not in PATH"; exit 1;; esac
           uname -r | grep -- '-aws$'
           test -d "/lib/modules/$(uname -r)"
           test "$(ps -o comm= -p 1)" = systemd
