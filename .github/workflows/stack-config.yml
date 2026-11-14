@@ -1,29 +1,27 @@
-name: v4 stack config
+name: v4 etc-environment
 
 on:
   push:
     branches: ['v4-test/stack-config']
 
 jobs:
-  flex:
+  env:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { runner: v4pool, want: '^(c7g|m7g)\.' }  # the stack's config only
-          - { runner: proof, want: '^c7a\.' }         # this repository's file over the stack's config
-    runs-on: runs-on=${{ github.run_id }}/env=dev/runner=${{ matrix.runner }}
+        image: [ubuntu24-full-x64, ubuntu26-full-x64]
+    runs-on: runs-on=${{ github.run_id }}/env=dev/cpu=2/family=m7i+m7a/image=${{ matrix.image }}
     steps:
-      - name: instance type
+      - name: /etc/environment in the job
         run: |
-          t="${RUNS_ON_INSTANCE_TYPE:-$(curl -s -H "X-aws-ec2-metadata-token: $(curl -s -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token)" http://169.254.169.254/latest/meta-data/instance-type)}"
-          echo "type=$t want=${{ matrix.want }} preinstall=$(cat /tmp/pool-preinstall 2>/dev/null || echo none)"
-          echo "$t" | grep -Eq '${{ matrix.want }}'
-  pool:
-    strategy:
-      fail-fast: false
-      matrix:
-        pool: [v4-dev-proof, v4-dev-hosts-ec2]
-    runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
-    steps:
-      - run: echo "pool=${{ matrix.pool }} runner=$RUNNER_NAME type=${RUNS_ON_INSTANCE_TYPE:-unset} arch=$(uname -m)"
+          echo "names in /etc/environment: $(cut -d= -f1 /etc/environment | tr '\n' ' ')"
+          missing=""
+          while IFS='=' read -r k _; do
+            case "$k" in ''|\#*|PATH) continue;; esac
+            [ -n "${!k+x}" ] || missing="$missing $k"
+          done < /etc/environment
+          echo "ImageOS=${ImageOS:-unset} JAVA_HOME=${JAVA_HOME:-unset}"
+          echo "missing from the job's env:${missing:- none}"
+          echo "PATH=$PATH"
+          echo "/etc/environment PATH=$(grep '^PATH=' /etc/environment | cut -c1-300)"
+          [ -z "$missing" ]
