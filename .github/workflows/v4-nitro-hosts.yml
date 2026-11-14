@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/v4-nitro-hosts.yml
 
-# run: 5
+# run: 6
 jobs:
   # Pools nitro-x64 and nitro-arm64 of stack runs-on-v4-nitro: one Nitro host
   # each (m8i.2xlarge, m8g.2xlarge), 6 slots of 2 vCPUs and 4 GiB, guests of
