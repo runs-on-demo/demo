@@ -70,7 +70,9 @@ jobs:
           probe "$gw" 22 || fail=1
           probe 10.1.0.1 443 || fail=1
           probe 169.254.170.2 80 || fail=1
-          if curl -s -m 3 http://169.254.169.254/latest/meta-data/iam/security-credentials/ | grep -q .; then echo "REACHED the instance role"; fail=1; else echo "no instance role"; fi
+          # 169.254.169.254 in a guest is Firecracker's metadata service, never EC2's: no role may be listed, with or without a token.
+          t=$(curl -sf -m 3 -X PUT -H 'X-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token || true)
+          if curl -sf -m 3 http://169.254.169.254/latest/meta-data/iam/security-credentials/ | grep -q . || curl -sf -m 3 -H "X-metadata-token: $t" -H "X-aws-ec2-metadata-token: $t" http://169.254.169.254/latest/meta-data/iam/security-credentials/ | grep -q .; then echo "REACHED the instance role"; fail=1; else echo "no instance role"; fi
           getent hosts github.com >/dev/null && echo "DNS ok"
           curl -fsS -o /dev/null https://github.com && echo "internet ok"
           exit $fail
