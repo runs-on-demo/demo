@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/v4-nitro-hosts.yml
 
-# run: 4
+# run: 5
 jobs:
   # Pools nitro-x64 and nitro-arm64 of stack runs-on-v4-nitro: one Nitro host
   # each (m8i.2xlarge, m8g.2xlarge), 6 slots of 2 vCPUs and 4 GiB, guests of
@@ -50,7 +50,7 @@ jobs:
           test "$(ps -o comm= -p 1)" = systemd
           systemctl is-system-running || systemctl --failed --no-legend
           sudo systemctl start nginx 2>/dev/null || sudo systemctl restart cron
-          systemctl is-active docker
+          systemctl is-active docker.socket
           systemd-analyze || true
           node --version; python3 --version; go version; java -version 2>&1 | head -1; aws --version; gh --version | head -1
           df -h / | tail -1
