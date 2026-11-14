@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/v4-nitro-hosts.yml
 
-# run: 3
+# run: 4
 jobs:
   # Pools nitro-x64 and nitro-arm64 of stack runs-on-v4-nitro: one Nitro host
   # each (m8i.2xlarge, m8g.2xlarge), 6 slots of 2 vCPUs and 4 GiB, guests of
@@ -24,9 +24,11 @@ jobs:
         run: |
           echo "runner: $RUNNER_NAME on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE)"
           uname -rm; nproc; free -m | sed -n 2p
-          echo "image $ImageOS $ImageVersion"
           cat /proc/cmdline
           sleep 45
+      - name: Job environment
+        run: |
+          echo "ENVCHECK $RUNS_ON_INSTANCE_ID ImageOS=${ImageOS:-unset} pipx=$(case ":$PATH:" in *:/opt/pipx_bin:*) echo in-path;; *) echo not-in-path;; esac) $(grep -c . /etc/environment) lines"
 
   image:
     needs: where
@@ -41,7 +43,8 @@ jobs:
           set -eux
           echo "on $RUNS_ON_INSTANCE_ID"
           case "$RUNS_ON_INSTANCE_ID" in host-*) ;; *) echo "not on a host"; exit 1;; esac
-          test "$ImageOS" = ubuntu26
+          grep -x 'ImageOS=ubuntu26' /etc/environment
+          grep ImageVersion /etc/environment
           uname -r | grep -- '-aws$'
           test -d "/lib/modules/$(uname -r)"
           test "$(ps -o comm= -p 1)" = systemd
