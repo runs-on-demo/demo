@@ -1,17 +1,6 @@
+# The stack's config (runs-on-v4-dev) defines `proof` on m7a/m7i: this file wins.
 runners:
-  parity:
-    family: [m7a, m7i, c7a]
+  proof:
+    family: [c7a]
     cpu: [2]
     image: ubuntu24-full-x64
-    preinstall: |
-      echo "preinstall user=$(whoami) home=$HOME"
-      echo "FROM_PREINSTALL=yes" >> "$GITHUB_ENV"
-      echo "/opt/preinstall-bin" >> "$GITHUB_PATH"
-      touch /tmp/preinstall-ran
-      echo "custom" > /runs-on/my-file
-      echo "FROM_ENV_CUSTOM=yes" >> /runs-on/env.custom
-    prerun: |
-      echo "prerun user=$(whoami)"
-      echo "FROM_PRERUN=yes" >> "$GITHUB_ENV"
-      echo "/opt/prerun-bin" >> "$GITHUB_PATH"
-      touch /tmp/prerun-ran
