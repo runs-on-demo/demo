@@ -24,4 +24,9 @@ jobs:
           echo "missing from the job's env:${missing:- none}"
           echo "PATH=$PATH"
           echo "/etc/environment PATH=$(grep '^PATH=' /etc/environment | cut -c1-300)"
-          [ -z "$missing" ]
+          nopath=""
+          for d in $(grep '^PATH=' /etc/environment | cut -d= -f2- | tr -d '"' | tr ':' ' '); do
+            case ":$PATH:" in *":$d:"*) ;; *) nopath="$nopath $d";; esac
+          done
+          echo "missing from the job's PATH:${nopath:- none}"
+          [ -z "$missing" ] && [ -z "$nopath" ]
