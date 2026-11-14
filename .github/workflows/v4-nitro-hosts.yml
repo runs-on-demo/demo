@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/v4-nitro-hosts.yml
 
-# run: 1
+# run: 2
 jobs:
   # Pool v4-nitro of stack runs-on-v4-nitro: one Nitro host of 6 slots
   # (2 vCPUs, 4 GiB each), overflow to an EC2 runner. 10 jobs at once: 6 on
@@ -51,6 +51,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Disk and memory under load
         run: |
+          set -eux
           df -h / | tail -1
-          dd if=/dev/zero of=/home/runner/fill bs=1M count=2048 status=none && rm /home/runner/fill && echo "wrote 2 GiB"
-          python3 -c "b=bytearray(3<<30); print('touched 3 GiB')" 2>/dev/null || echo "no python3 in the image"
+          dd if=/dev/urandom of=/home/runner/fill bs=1M count=2048 status=none
+          ls -l /home/runner/fill && rm /home/runner/fill
+          dd if=/dev/zero of=/dev/shm/m bs=1M count=3000 status=none && ls -l /dev/shm/m && rm /dev/shm/m
+          free -m | sed -n 2p
