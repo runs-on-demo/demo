@@ -1,32 +1,23 @@
-name: v4 etc-environment
+name: v4 host pool
 
 on:
   push:
     branches: ['v4-test/stack-config']
 
 jobs:
-  env:
+  hosts:
     strategy:
       fail-fast: false
       matrix:
-        image: [ubuntu24-full-x64, ubuntu26-full-x64]
-    runs-on: runs-on=${{ github.run_id }}/env=dev/cpu=2/family=m7i+m7a/image=${{ matrix.image }}
+        pool: [v4-dev-hosts-ec2]
+        n: [1, 2]
+    runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
     steps:
-      - name: /etc/environment in the job
+      - uses: actions/checkout@v4
+      - name: on a host guest of the pool
         run: |
-          echo "names in /etc/environment: $(cut -d= -f1 /etc/environment | tr '\n' ' ')"
-          missing=""
-          while IFS='=' read -r k _; do
-            case "$k" in ''|\#*|PATH) continue;; esac
-            [ -n "${!k+x}" ] || missing="$missing $k"
-          done < /etc/environment
-          echo "ImageOS=${ImageOS:-unset} JAVA_HOME=${JAVA_HOME:-unset}"
-          echo "missing from the job's env:${missing:- none}"
-          echo "PATH=$PATH"
-          echo "/etc/environment PATH=$(grep '^PATH=' /etc/environment | cut -c1-300)"
-          nopath=""
-          for d in $(grep '^PATH=' /etc/environment | cut -d= -f2- | tr -d '"' | tr ':' ' '); do
-            case ":$PATH:" in *":$d:"*) ;; *) nopath="$nopath $d";; esac
-          done
-          echo "missing from the job's PATH:${nopath:- none}"
-          [ -z "$missing" ] && [ -z "$nopath" ]
+          echo "runner=$RUNS_ON_RUNNER_NAME instance=$RUNS_ON_INSTANCE_ID pool=$RUNS_ON_POOL_NAME version=$RUNS_ON_VERSION"
+          echo "kernel=$(uname -r) cpus=$(nproc) mem=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)MiB container=$([ -f /.dockerenv ] && echo yes || echo no)"
+          git log --oneline -1
+          case "$RUNS_ON_INSTANCE_ID" in host-*) ;; *) echo "not a host guest"; exit 1;; esac
+          [ "$RUNS_ON_POOL_NAME" = "${{ matrix.pool }}" ]
