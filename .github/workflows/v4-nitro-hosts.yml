@@ -109,3 +109,37 @@ jobs:
           sleep 540
           echo "still here at $(date -u +%T): $(grep ImageVersion /etc/environment) kernel $(uname -r)"
           docker run --rm alpine:3.20 echo docker ok
+
+  # Confidential sandboxes (-firecracker-backend nitro): the image's files and
+  # systemd under a kernel with virtio DMB.
+  conf:
+    if: contains(github.event.head_commit.message, '[conf]')
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    runs-on: runs-on/fleet=nitro-${{ matrix.arch }}/env=nitro
+    steps:
+      - name: Where am I
+        run: |
+          set -eux
+          echo "on $RUNS_ON_INSTANCE_ID"
+          uname -rm; cat /proc/cmdline
+          sudo dmesg | grep -i -E "DMB|Memory Encryption|swiotlb" | head || true
+          grep ImageVersion /etc/environment
+          test "$(ps -o comm= -p 1)" = systemd
+          systemctl is-system-running || systemctl --failed --no-legend
+      - name: Docker
+        run: |
+          set -eux
+          docker info --format '{{.ServerVersion}} {{.Driver}} cgroup v{{.CgroupVersion}}'
+          docker run --rm alpine:3.20 sh -c 'echo hello from a container; wget -qO- https://api.github.com/zen'
+          docker run --rm -p 8080:80 -d --name web nginx:alpine >/dev/null && sleep 2 && curl -s localhost:8080 | grep -o '<title>.*</title>'
+          printf 'FROM alpine:3.20\nRUN echo built > /built\n' | docker build -q -t t - && docker run --rm t cat /built
+      - uses: actions/checkout@v4
+      - name: Disk and memory under load
+        run: |
+          set -eux
+          dd if=/dev/urandom of=/home/runner/fill bs=1M count=4096 status=none
+          ls -l /home/runner/fill && rm /home/runner/fill
+          dd if=/dev/zero of=/dev/shm/m bs=1M count=1500 status=none && rm /dev/shm/m
