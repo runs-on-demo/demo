@@ -13,6 +13,7 @@ jobs:
   # RunsOn's Ubuntu 26 image, overflow to an EC2 runner. 10 jobs at once per
   # pool: 6 on the host, 4 on EC2.
   where:
+    if: contains(github.event.head_commit.message, '[full]')
     strategy:
       fail-fast: false
       matrix:
@@ -91,3 +92,20 @@ jobs:
           ls -l /home/runner/fill && rm /home/runner/fill
           dd if=/dev/zero of=/dev/shm/m bs=1M count=1500 status=none && ls -l /dev/shm/m && rm /dev/shm/m
           free -m | sed -n 2p
+
+  # Pool nitro-x64-only has no overflow: 8 jobs for 6 slots, so 2 wait for a
+  # slot (the hosts-full alarm), and boot whatever image the host has by then.
+  waiting:
+    if: contains(github.event.head_commit.message, '[wait]')
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8]
+    runs-on: runs-on/fleet=nitro-x64-only/env=nitro
+    steps:
+      - name: Hold a slot
+        run: |
+          echo "on $RUNS_ON_INSTANCE_ID at $(date -u +%T): $(grep ImageVersion /etc/environment) kernel $(uname -r)"
+          sleep 540
+          echo "still here at $(date -u +%T): $(grep ImageVersion /etc/environment) kernel $(uname -r)"
+          docker run --rm alpine:3.20 echo docker ok
