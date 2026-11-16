@@ -148,3 +148,17 @@ jobs:
         run: |
           echo "SUMMARY $RUNS_ON_INSTANCE_ID kernel=$(uname -r) $(grep ImageVersion /etc/environment) pid1=$(ps -o comm= -p 1) system=$(systemctl is-system-running)"
           sudo dmesg | grep -i -E "Virtio DMB" | head -3
+
+  # A guest that stays long enough to be looked at from its host.
+  hold:
+    if: contains(github.event.head_commit.message, '[hold]')
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    runs-on: runs-on/fleet=nitro-${{ matrix.arch }}/env=nitro
+    steps:
+      - run: |
+          echo "HOLD $RUNS_ON_INSTANCE_ID kernel=$(uname -r) $(grep ImageVersion /etc/environment) $(date -u +%FT%T)"
+          sudo sh -c 'echo "runs-on-hold: $(uname -r) $(date -u +%FT%T)" > /dev/ttyS0' || true
+          sleep 70
