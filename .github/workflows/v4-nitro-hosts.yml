@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/v4-nitro-hosts.yml
 
-# run: 11
+# run: 12
 jobs:
   # Pools nitro-x64 and nitro-arm64 of stack runs-on-v4-nitro: one Nitro host
   # each (m8i.2xlarge, m8g.2xlarge), 6 slots of 2 vCPUs and 4 GiB, guests of
@@ -143,3 +143,8 @@ jobs:
           dd if=/dev/urandom of=/home/runner/fill bs=1M count=4096 status=none
           ls -l /home/runner/fill && rm /home/runner/fill
           dd if=/dev/zero of=/dev/shm/m bs=1M count=1500 status=none && rm /dev/shm/m
+      - name: Summary
+        if: always()
+        run: |
+          echo "SUMMARY $RUNS_ON_INSTANCE_ID kernel=$(uname -r) $(grep ImageVersion /etc/environment) pid1=$(ps -o comm= -p 1) system=$(systemctl is-system-running)"
+          sudo dmesg | grep -i -E "Virtio DMB" | head -3
