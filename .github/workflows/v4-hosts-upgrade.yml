@@ -1,0 +1,43 @@
+name: v4 hosts upgrade
+
+# Each push names the jobs it wants in its commit message: kvm, ec2, win,
+# long.
+on:
+  push:
+    branches: [v4-test/hosts-upgrade]
+
+jobs:
+  # A pool with overflow: on a host (host-<id>.<guest>), or on EC2 (i-...)
+  # when no host can take it.
+  kvm:
+    if: contains(github.event.head_commit.message, 'kvm')
+    runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
+    steps:
+      - run: echo "kvm pool on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE) at $(date -u +%T)"
+
+  # A pool without overflow: waits for a host.
+  ec2:
+    if: contains(github.event.head_commit.message, 'ec2')
+    runs-on: runs-on/fleet=v4-dev-hosts-ec2/env=dev
+    steps:
+      - run: echo "ec2 pool on $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE) at $(date -u +%T)"
+
+  win:
+    if: contains(github.event.head_commit.message, 'win')
+    runs-on: runs-on/fleet=v4-dev-hosts-win/env=dev
+    steps:
+      - run: echo "win pool on $env:RUNS_ON_INSTANCE_ID ($env:RUNS_ON_INSTANCE_TYPE)"
+
+  # Runs through a host's upgrade: a line every 10 s, for 6 minutes.
+  long:
+    if: contains(github.event.head_commit.message, 'long')
+    strategy:
+      fail-fast: false
+      matrix:
+        pool: [v4-dev-hosts-ec2, v4-dev-hosts-kvm]
+    runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
+    steps:
+      - run: |
+          echo "long job on $RUNS_ON_INSTANCE_ID"
+          for i in $(seq 36); do echo "$(date -u +%T) alive $i"; sleep 10; done
+          aws sts get-caller-identity --query Arn --output text 2>/dev/null | sed 's/[0-9]\{12\}/ACCOUNT/' || echo "no aws cli"
