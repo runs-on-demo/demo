@@ -21,7 +21,7 @@ jobs:
             family: c7i+m7i+c7a+m7a
           - image: ubuntu24-full-x64
             family: c7i+m7i+c7a+m7a
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=${{ matrix.family }}/cpu=2/image=${{ matrix.image }}
+    runs-on: runs-on=${{ github.run_id }}/family=${{ matrix.family }}/cpu=2/image=${{ matrix.image }}/env=demo
     steps:
       - run: |
           mono() { systemctl show "$1" -p ActiveEnterTimestampMonotonic --value; }
