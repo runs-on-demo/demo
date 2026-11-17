@@ -1,0 +1,46 @@
+name: SYN re-roll check
+
+# One job per Ubuntu 22 and 24 full image: is the early-boot SYN re-roll of
+# runner-images-for-aws (configure-syn-reroll.sh) loaded on this boot, and
+# was it loaded before the network came up?
+on:
+  push:
+    branches: [v4-test/reroll-check]
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu22-full-arm64
+            family: c7g+m7g+c8g+m8g
+          - image: ubuntu24-full-arm64
+            family: c7g+m7g+c8g+m8g
+          - image: ubuntu22-full-x64
+            family: c7i+m7i+c7a+m7a
+          - image: ubuntu24-full-x64
+            family: c7i+m7i+c7a+m7a
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=${{ matrix.family }}/cpu=2/image=${{ matrix.image }}
+    steps:
+      - run: |
+          mono() { systemctl show "$1" -p ActiveEnterTimestampMonotonic --value; }
+          token=$(curl -s -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token)
+          ami=$(curl -s -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/ami-id)
+          state=$(systemctl show runs-on-syn-reroll.service -p ActiveState --value)
+          result=$(systemctl show runs-on-syn-reroll.service -p Result --value)
+          timer=$(systemctl show runs-on-syn-reroll-stop.timer -p ActiveState --value)
+          stop=$(systemctl show runs-on-syn-reroll-stop.service -p Result --value)
+          unit_us=$(mono runs-on-syn-reroll.service)
+          netpre_us=$(mono network-pre.target)
+          cloudinit_us=$(mono cloud-init-local.service)
+          chain=$(sudo nft list chain ip ro_syn post 2>&1 | tr '\n' ' ' | tr -s ' ')
+          set_size=$(sudo nft list set ip ro_syn github_aws 2>/dev/null | grep -c '/')
+          packets=$(echo "$chain" | grep -o 'packets [0-9]*' | head -1)
+          linear=$(cat /proc/sys/net/ipv4/tcp_syn_linear_timeouts)
+          echo "::notice title=reroll-check::image=${{ matrix.image }} ami=$ami kernel=$(uname -r) nft=$(nft --version | cut -d' ' -f2) up=$(cut -d' ' -f1 /proc/uptime)s unit=$state/$result at ${unit_us}us network-pre at ${netpre_us}us cloud-init-local at ${cloudinit_us}us timer=$timer stop=$stop set_lines=$set_size ${packets:-no counter} syn_linear=$linear"
+          echo "$chain"
+          systemctl status runs-on-syn-reroll.service --no-pager -n 5 || true
+          [ "$state" = active ] && [ "$result" = success ] || { echo "the re-roll unit did not load"; exit 1; }
+          sudo nft list table ip ro_syn > /dev/null || { echo "table ro_syn is missing"; exit 1; }
+          [ "$unit_us" -gt 0 ] && [ "$unit_us" -le "$netpre_us" ] || { echo "the unit did not load before network-pre.target"; exit 1; }
