@@ -1,0 +1,43 @@
+name: v4 nitro asg
+
+on:
+  push:
+    branches: [v4-test/nitro-asg]
+    paths:
+      - .github/workflows/v4-nitro-asg.yml
+
+# run: 1
+# Pool nitro-asg of stack runs-on-v4-dev: Nitro hosts of an Auto Scaling
+# group (m8i.2xlarge, 6 guests of 2 vCPUs and 4 GiB each), overflow to an EC2
+# runner. The commit message says how many jobs and for how long:
+# [n=14] [sleep=600].
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+      sleep: ${{ steps.m.outputs.sleep }}
+    steps:
+      - id: m
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          n=$(grep -oP '\[n=\K[0-9]+' <<<"$MSG" || echo 1)
+          s=$(grep -oP '\[sleep=\K[0-9]+' <<<"$MSG" || echo 60)
+          echo "matrix=$(seq -s, 1 "$n" | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT"
+          echo "sleep=$s" >> "$GITHUB_OUTPUT"
+  hold:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: runs-on/fleet=nitro-asg/env=dev
+    steps:
+      - name: Hold a slot
+        run: |
+          echo "WHERE $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE) at $(date -u +%T) nproc=$(nproc)"
+          t0=$(date +%s.%N); openssl speed -seconds 10 -evp sha256 2>/dev/null | tail -1; echo "CPU10 took $(echo "$(date +%s.%N) - $t0" | bc)"
+          sleep ${{ needs.plan.outputs.sleep }}
+          docker run --rm alpine:3.20 echo docker ok
+          echo "DONE $RUNS_ON_INSTANCE_ID at $(date -u +%T)"
