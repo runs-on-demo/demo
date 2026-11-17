@@ -37,7 +37,8 @@ jobs:
       - name: Hold a slot
         run: |
           echo "WHERE $RUNS_ON_INSTANCE_ID ($RUNS_ON_INSTANCE_TYPE) at $(date -u +%T) nproc=$(nproc)"
-          t0=$(date +%s.%N); openssl speed -seconds 10 -evp sha256 2>/dev/null | tail -1; echo "CPU10 took $(echo "$(date +%s.%N) - $t0" | bc)"
+          echo "CPU1 $(openssl speed -seconds 10 -bytes 16384 -evp sha256 2>/dev/null | tail -1)"
+          echo "CPU2 $(openssl speed -multi 2 -seconds 10 -bytes 16384 -evp sha256 2>/dev/null | tail -1)"
           sleep ${{ needs.plan.outputs.sleep }}
           docker run --rm alpine:3.20 echo docker ok
           echo "DONE $RUNS_ON_INSTANCE_ID at $(date -u +%T)"
