@@ -1,0 +1,202 @@
+name: v4 stress
+
+# Burst and soak waves for the v4 dev stack (runs-on-v4-dev). One push is one
+# wave; the commit message says how many jobs of each kind and for how long:
+#   [flex=200] [flexod=20] [pool=50] [microvm=100] [nitro=12] [sleep=60]
+# A kind left out runs nothing. Up to 512 jobs of a kind per wave (two
+# matrices of 256, GitHub's limit). Driven and measured by
+# deploy/v4/stress.sh in runs-on/monorepo (release/v4).
+on:
+  push:
+    branches: [v4-test/stress]
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      sleep: ${{ steps.m.outputs.sleep }}
+      flex_a: ${{ steps.m.outputs.flex_a }}
+      flex_b: ${{ steps.m.outputs.flex_b }}
+      flexod_a: ${{ steps.m.outputs.flexod_a }}
+      flexod_b: ${{ steps.m.outputs.flexod_b }}
+      pool_a: ${{ steps.m.outputs.pool_a }}
+      pool_b: ${{ steps.m.outputs.pool_b }}
+      microvm_a: ${{ steps.m.outputs.microvm_a }}
+      microvm_b: ${{ steps.m.outputs.microvm_b }}
+      nitro_a: ${{ steps.m.outputs.nitro_a }}
+      nitro_b: ${{ steps.m.outputs.nitro_b }}
+    steps:
+      - id: m
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          num() { grep -oP "\\[$1=\\K[0-9]+" <<<"$MSG" | head -1 || true; }
+          list() { if [ "$1" -gt 0 ]; then seq -s, 1 "$1" | sed 's/^/[/;s/$/]/'; else echo '[]'; fi; }
+          s=$(num sleep); echo "sleep=${s:-60}" >> "$GITHUB_OUTPUT"
+          for k in flex flexod pool microvm nitro; do
+            n=$(num $k); n=${n:-0}; [ "$n" -gt 512 ] && n=512
+            a=$(( n > 256 ? 256 : n )); b=$(( n - a ))
+            echo "${k}_a=$(list $a)" >> "$GITHUB_OUTPUT"
+            echo "${k}_b=$(list $b)" >> "$GITHUB_OUTPUT"
+            echo "$k: $n"
+          done
+  flex_a:
+    # Flex job on EC2 (spot, arm64, default image)
+    needs: plan
+    if: needs.plan.outputs.flex_a != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.flex_a) }}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g+r7g+r8g/cpu=2
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS flex ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  flex_b:
+    # Flex job on EC2 (spot, arm64, default image)
+    needs: plan
+    if: needs.plan.outputs.flex_b != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.flex_b) }}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g+r7g+r8g/cpu=2
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS flex ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  flexod_a:
+    # Flex job on EC2 (on-demand, x64)
+    needs: plan
+    if: needs.plan.outputs.flexod_a != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.flexod_a) }}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7i+m7i+c7a+m7a/cpu=2/spot=false
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS flexod ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  flexod_b:
+    # Flex job on EC2 (on-demand, x64)
+    needs: plan
+    if: needs.plan.outputs.flexod_b != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.flexod_b) }}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7i+m7i+c7a+m7a/cpu=2/spot=false
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS flexod ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  pool_a:
+    # Fleet pool job (scale set, warm pool)
+    needs: plan
+    if: needs.plan.outputs.pool_a != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.pool_a) }}
+    runs-on: runs-on/fleet=v4-dev-warm/env=dev
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS pool ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  pool_b:
+    # Fleet pool job (scale set, warm pool)
+    needs: plan
+    if: needs.plan.outputs.pool_b != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.pool_b) }}
+    runs-on: runs-on/fleet=v4-dev-warm/env=dev
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS pool ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  microvm_a:
+    # Flex job on a Lambda MicroVM
+    needs: plan
+    if: needs.plan.outputs.microvm_a != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.microvm_a) }}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS microvm ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  microvm_b:
+    # Flex job on a Lambda MicroVM
+    needs: plan
+    if: needs.plan.outputs.microvm_b != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.microvm_b) }}
+    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS microvm ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  nitro_a:
+    # Host pool job (Nitro sandbox on an autoscaled host)
+    needs: plan
+    if: needs.plan.outputs.nitro_a != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.nitro_a) }}
+    runs-on: runs-on/fleet=nitro-asg/env=dev
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS nitro ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
+  nitro_b:
+    # Host pool job (Nitro sandbox on an autoscaled host)
+    needs: plan
+    if: needs.plan.outputs.nitro_b != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        n: ${{ fromJSON(needs.plan.outputs.nitro_b) }}
+    runs-on: runs-on/fleet=nitro-asg/env=dev
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "STRESS nitro ${{ matrix.n }} on ${RUNS_ON_INSTANCE_ID:-$(hostname)} ${RUNS_ON_INSTANCE_TYPE:-?} $(uname -m), up $(cut -d' ' -f1 /proc/uptime)s"
+          test -w "$GITHUB_WORKSPACE" && df -h "$GITHUB_WORKSPACE" | tail -1
+          sleep ${{ needs.plan.outputs.sleep }}
+          echo "STRESS done at $(date -u +%T)"
