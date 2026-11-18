@@ -48,7 +48,7 @@ jobs:
       fail-fast: false
       matrix:
         n: ${{ fromJSON(needs.plan.outputs.flex_a) }}
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g+r7g+r8g/cpu=2
+    runs-on: runs-on=${{ github.run_id }}/env=dev/family=c7g+m7g+c8g+m8g+r7g+r8g/cpu=2
     timeout-minutes: 60
     steps:
       - run: |
@@ -64,7 +64,7 @@ jobs:
       fail-fast: false
       matrix:
         n: ${{ fromJSON(needs.plan.outputs.flex_b) }}
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7g+m7g+c8g+m8g+r7g+r8g/cpu=2
+    runs-on: runs-on=${{ github.run_id }}/env=dev/family=c7g+m7g+c8g+m8g+r7g+r8g/cpu=2
     timeout-minutes: 60
     steps:
       - run: |
@@ -80,7 +80,7 @@ jobs:
       fail-fast: false
       matrix:
         n: ${{ fromJSON(needs.plan.outputs.flexod_a) }}
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7i+m7i+c7a+m7a/cpu=2/spot=false
+    runs-on: runs-on=${{ github.run_id }}/env=dev/family=c7i+m7i+c7a+m7a/cpu=2/spot=false
     timeout-minutes: 60
     steps:
       - run: |
@@ -96,7 +96,7 @@ jobs:
       fail-fast: false
       matrix:
         n: ${{ fromJSON(needs.plan.outputs.flexod_b) }}
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=c7i+m7i+c7a+m7a/cpu=2/spot=false
+    runs-on: runs-on=${{ github.run_id }}/env=dev/family=c7i+m7i+c7a+m7a/cpu=2/spot=false
     timeout-minutes: 60
     steps:
       - run: |
@@ -144,7 +144,7 @@ jobs:
       fail-fast: false
       matrix:
         n: ${{ fromJSON(needs.plan.outputs.microvm_a) }}
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    runs-on: runs-on=${{ github.run_id }}/env=dev/family=microvm
     timeout-minutes: 60
     steps:
       - run: |
@@ -160,7 +160,7 @@ jobs:
       fail-fast: false
       matrix:
         n: ${{ fromJSON(needs.plan.outputs.microvm_b) }}
-    runs-on: runs-on=${{ github.run_id }}/env=v4dev/family=microvm
+    runs-on: runs-on=${{ github.run_id }}/env=dev/family=microvm
     timeout-minutes: 60
     steps:
       - run: |
