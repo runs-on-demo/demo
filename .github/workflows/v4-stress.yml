@@ -207,6 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
+      contents: write
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
@@ -229,3 +230,12 @@ jobs:
               print("PICKUP", json.dumps({"kind": kind, "n": n, "p50": p(.5), "p90": p(.9), "p99": p(.99), "max": xs[-1],
                     "hist": dict(sorted(collections.Counter(xs).items())), "conclusions": {c: v for (k, c), v in concl.items() if k == kind}}))
           PY
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          # The wave's jobs, on a branch of their own for whoever measures.
+          mkdir out && cd out && git init -q -b "stress-results/$GITHUB_RUN_ID"
+          cp ../jobs.tsv . && printf '%s\n' "$MSG" > wave.txt
+          git add -A && git -c user.name=stress -c user.email=stress@runs-on.com commit -q -m "wave $GITHUB_RUN_ID"
+          git push -q "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY" "stress-results/$GITHUB_RUN_ID"
