@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pool: [hx-kvm, hx-docker, hx-nitro]
+        pool: [nitro-asg]
     runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
     env:
       S: ${{ github.workspace }}/hx-summary/summary.txt
