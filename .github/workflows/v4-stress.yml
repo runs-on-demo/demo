@@ -201,41 +201,28 @@ jobs:
           sleep ${{ needs.plan.outputs.sleep }}
           echo "STRESS done at $(date -u +%T)"
   report:
-    # Pick-up time of the wave's jobs, as GitHub saw it: started_at - created_at.
+    # The wave's jobs as GitHub saw them (pick-up time = started_at - created_at),
+    # saved through the cache of a RunsOn runner (key stress-jobs-<run id>), where
+    # whoever measures reads them from the stack's cache bucket.
     needs: [flex_a, flex_b, flexod_a, flexod_b, pool_a, pool_b, microvm_a, microvm_b, nitro_a, nitro_b]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: runs-on/fleet=hx-kvm/env=dev
     permissions:
       actions: read
-      contents: write
     steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" --jq '.jobs[] | [.name, .conclusion, .created_at, .started_at, .completed_at, (.runner_name // "")] | @tsv' > jobs.tsv
-          python3 - <<'PY'
-          import collections, json
-          from datetime import datetime
-          t = lambda s: datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ")
-          kinds = collections.defaultdict(list); concl = collections.Counter()
-          for line in open("jobs.tsv"):
-              name, c, created, started, done, runner = line.rstrip("\n").split("\t")
-              kind = name.split("_")[0]
-              if kind in ("plan", "report") or not started: continue
-              concl[(kind, c)] += 1
-              kinds[kind].append(int((t(started) - t(created)).total_seconds()))
-          for kind, xs in kinds.items():
-              xs.sort(); n = len(xs)
-              p = lambda q: xs[min(n - 1, int(q * (n - 1) + 0.5))]
-              print("PICKUP", json.dumps({"kind": kind, "n": n, "p50": p(.5), "p90": p(.9), "p99": p(.99), "max": xs[-1],
-                    "hist": dict(sorted(collections.Counter(xs).items())), "conclusions": {c: v for (k, c), v in concl.items() if k == kind}}))
-          PY
       - env:
           GH_TOKEN: ${{ github.token }}
           MSG: ${{ github.event.head_commit.message }}
         run: |
-          # The wave's jobs, on a branch of their own for whoever measures.
-          mkdir out && cd out && git init -q -b "stress-results/$GITHUB_RUN_ID"
-          cp ../jobs.tsv . && printf '%s\n' "$MSG" > wave.txt
-          git add -A && git -c user.name=stress -c user.email=stress@runs-on.com commit -q -m "wave $GITHUB_RUN_ID"
-          git push -q "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY" "stress-results/$GITHUB_RUN_ID"
+          mkdir -p stress-jobs && printf '%s\n' "$MSG" > stress-jobs/wave.txt
+          for page in 1 2 3 4 5 6 7 8 9 10 11; do
+            curl -sf -H "Authorization: Bearer $GH_TOKEN" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100&page=$page" > page.json
+            n=$(jq '.jobs | length' page.json)
+            jq -r '.jobs[] | [.name, .conclusion, .created_at, .started_at, .completed_at, (.runner_name // "")] | @tsv' page.json >> stress-jobs/jobs.tsv
+            [ "$n" -lt 100 ] && break
+          done
+          wc -l stress-jobs/jobs.tsv
+      - uses: actions/cache/save@v4
+        with:
+          path: stress-jobs
+          key: stress-jobs-${{ github.run_id }}
