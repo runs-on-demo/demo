@@ -1,0 +1,1 @@
+wave 2026-11-19T13:49:31Z [nitro=100] [sleep=90] soakA
