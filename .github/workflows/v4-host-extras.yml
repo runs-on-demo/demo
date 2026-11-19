@@ -1,4 +1,5 @@
 # A host pool's runner: preinstall, prerun and the cache extras on host guests.
+# Each job saves a short summary through the cache (key hx-summary-<pool>-<run id>).
 name: v4 host extras
 
 on:
@@ -12,51 +13,70 @@ jobs:
       matrix:
         pool: [hx-kvm, hx-docker, hx-nitro]
     runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
+    env:
+      S: ${{ github.workspace }}/hx-summary/summary.txt
     steps:
       - name: setup (preinstall, prerun, shape)
         run: |
-          echo "instance $RUNS_ON_INSTANCE_ID type $RUNS_ON_INSTANCE_TYPE pool ${RUNS_ON_POOL_NAME:-unset}; $(nproc) vCPU, $(free -m | awk '/Mem:/{print $2}') MiB"
-          echo "preinstall marker: $(cat /runs-on/preinstall-marker 2>/dev/null || echo MISSING)"
-          echo "prerun env: ${HX_PRERUN:-MISSING}"
-          test -f /runs-on/preinstall-marker && test "$HX_PRERUN" = ran
-      - name: s3-cache env
-        run: env | grep -E '^ACTIONS_CACHE_URL|^ACTIONS_RESULTS_URL|^RUNS_ON_MAGIC_CACHE_URL' | sed 's/=.*/=set/' | sort; test -n "$RUNS_ON_MAGIC_CACHE_URL"
+          mkdir -p "$(dirname "$S")"
+          {
+            echo "instance $RUNS_ON_INSTANCE_ID type $RUNS_ON_INSTANCE_TYPE pool ${RUNS_ON_POOL_NAME:-unset} standby ${RUNS_ON_POOL_STANDBY_TYPE:-unset} $(uname -m) $(nproc) vCPU $(free -m | awk '/Mem:/{print $2}') MiB"
+            echo "launched_at $RUNS_ON_INSTANCE_LAUNCHED_AT now $(date -u +%FT%TZ)"
+            echo "preinstall marker: $(cat /runs-on/preinstall-marker 2>/dev/null || echo MISSING)"
+            echo "prerun env: ${HX_PRERUN:-MISSING}"
+            echo "magic cache url: ${RUNS_ON_MAGIC_CACHE_URL:-MISSING}"
+          } | tee -a "$S"
+          test -f /runs-on/preinstall-marker && test "$HX_PRERUN" = ran && test -n "$RUNS_ON_MAGIC_CACHE_URL"
       - id: restore
         uses: actions/cache/restore@v4
         with:
           path: blob
-          key: hx-${{ matrix.pool }}-${{ github.ref_name }}
+          key: hx-blob-${{ matrix.pool }}-${{ github.run_id }}
+          restore-keys: hx-blob-${{ matrix.pool }}-
       - run: |
-          echo "cache hit: ${{ steps.restore.outputs.cache-hit }}"
-          if [ -f blob/data ]; then echo "restored blob of run $(cat blob/run)"; fi
+          echo "s3-cache: restored key '${{ steps.restore.outputs.cache-matched-key }}' blob of run $(cat blob/run 2>/dev/null || echo none)" | tee -a "$S"
           mkdir -p blob && head -c 20000000 /dev/urandom > blob/data && echo "${{ github.run_id }}" > blob/run
       - uses: actions/cache/save@v4
         with:
           path: blob
-          key: hx-${{ matrix.pool }}-${{ github.ref_name }}-${{ github.run_id }}
-      - name: second key, restored in this job (s3-cache round trip)
-        uses: actions/cache/restore@v4
-        id: again
-        with:
-          path: blob2
-          key: hx-${{ matrix.pool }}-${{ github.ref_name }}-${{ github.run_id }}
-          fail-on-cache-miss: false
-      - uses: actions/checkout@v4
-      - name: git-cache and apt-cache
+          key: hx-blob-${{ matrix.pool }}-${{ github.run_id }}
+      - name: git-cache
+        if: always()
         run: |
-          git config --system --get-all include.path || echo "no git include"
-          time git clone -q https://github.com/runs-on/action /tmp/action && git -C /tmp/action log -1 --format=%h
-          echo "git-cache: $(curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 500)"
-          time sudo apt-get update -q | tail -2
-          time sudo apt-get install -y -q --reinstall jq | tail -2
-          echo "apt-cache: $(curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 500)"
+          {
+            echo "git-cache config: $(sudo git config --system -l 2>/dev/null | grep -ciE 'proxy|sslcainfo|insteadof') proxy lines in /etc/gitconfig"
+            s=$(date +%s%N); git clone -q https://github.com/runs-on/action /tmp/action; rc=$?
+            echo "git clone rc=$rc $(( ($(date +%s%N) - s) / 1000000 )) ms, head $(git -C /tmp/action log -1 --format=%h 2>&1 | head -c 40)"
+          } 2>&1 | tee -a "$S"
+      - name: apt-cache
+        if: always()
+        run: |
+          {
+            echo "apt-cache conf: $(ls /etc/apt/apt.conf.d/ | grep -c runs-on-apt-cache) file, $(apt-config dump 2>/dev/null | grep -i 'proxy' | head -2 | tr '\n' ' ')"
+            s=$(date +%s%N); sudo apt-get update -q >/dev/null 2>&1; echo "apt-get update rc=$? $(( ($(date +%s%N) - s) / 1000000 )) ms"
+            s=$(date +%s%N); sudo apt-get install -y -q --reinstall --download-only cowsay >/tmp/apt.out 2>&1; echo "apt-get download cowsay rc=$? $(( ($(date +%s%N) - s) / 1000000 )) ms: $(grep -E '^Fetched|^Get:' /tmp/apt.out | tail -1 | head -c 120)"
+          } 2>&1 | tee -a "$S"
       - name: ecr-cache
+        if: always()
         run: |
-          echo "ECR cache: ${RUNS_ON_ECR_CACHE:-unset}"
-          test -n "$RUNS_ON_ECR_CACHE"
-          printf 'FROM public.ecr.aws/docker/library/alpine:3.20\nRUN echo hx-${{ matrix.pool }} > /pool && sleep 2\n' > Dockerfile.hx
-          docker buildx create --use --driver docker-container >/dev/null
-          docker buildx build -f Dockerfile.hx --cache-from type=registry,ref=$RUNS_ON_ECR_CACHE:hx-${{ matrix.pool }} --cache-to type=registry,ref=$RUNS_ON_ECR_CACHE:hx-${{ matrix.pool }},mode=max,image-manifest=true,oci-mediatypes=true -t local/test . 2>&1 | grep -iE "cache|exporting|CACHED|error|denied" | head -20
+          {
+            echo "ecr cache: ${RUNS_ON_ECR_CACHE:-MISSING}"
+            if ! command -v docker >/dev/null; then echo "ecr: no docker in this image, build skipped"; exit 0; fi
+            printf 'FROM public.ecr.aws/docker/library/alpine:3.20\nRUN echo hx-${{ matrix.pool }} > /pool && sleep 3\n' > Dockerfile.hx
+            docker buildx create --use --driver docker-container >/dev/null 2>&1
+            docker buildx build -f Dockerfile.hx --cache-from type=registry,ref=$RUNS_ON_ECR_CACHE:hx-${{ matrix.pool }} --cache-to type=registry,ref=$RUNS_ON_ECR_CACHE:hx-${{ matrix.pool }},mode=max,image-manifest=true,oci-mediatypes=true -t local/test . > /tmp/build.out 2>&1
+            echo "ecr build rc=$? cached-steps=$(grep -c CACHED /tmp/build.out) $(grep -iE 'importing cache|exporting cache|error|denied|unauthorized' /tmp/build.out | head -6 | cut -c1-200 | tr '\n' '|')"
+          } 2>&1 | tee -a "$S"
       - name: sandboxd log
         if: always()
-        run: sudo journalctl -u runs-on-sandboxd -o cat 2>/dev/null | grep -iE 'extra|cache|broker|denied' | cut -c1-260 | tail -20 || true
+        run: |
+          {
+            echo "job report so far: $(curl -s --max-time 5 --unix-socket /run/runs-on-hooks/sandboxd.sock http://sandboxd/job-completed | grep -iE 'cache' | head -5 | tr '\n' '|')"
+            sudo journalctl -u runs-on-sandboxd -o cat 2>/dev/null | grep -iE 'extra|cache|broker|denied' | cut -c1-240 | tail -12
+          } 2>&1 | tee -a "$S" || true
+      - name: summary through the cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: hx-summary
+          key: hx-summary-${{ matrix.pool }}-${{ github.run_id }}
