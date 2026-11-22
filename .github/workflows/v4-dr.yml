@@ -1,19 +1,14 @@
 name: v4 dr test
 
-# Throwaway: jobs for the v4 disaster recovery docs test (stacks
-# runs-on-v4-drt, env drt). One push is one run.
+# Throwaway: jobs for the v4 fallback runner fix test (stack
+# runs-on-v4-fbt, env fbt). One push is one run.
 on:
   push:
     branches: [v4-test/dr]
 
 jobs:
-  flex:
-    runs-on: runs-on=${{ github.run_id }}/env=drt/runner=2cpu-linux-arm64
-    timeout-minutes: 30
-    steps:
-      - run: echo "DR flex on $RUNS_ON_INSTANCE_ID in $RUNS_ON_AWS_REGION ($RUNS_ON_STACK_NAME)"
   pool:
-    runs-on: runs-on/fleet=drpool/env=drt
+    runs-on: runs-on/fleet=fbpool/env=fbt
     timeout-minutes: 30
     steps:
-      - run: echo "DR pool on $RUNS_ON_INSTANCE_ID in $RUNS_ON_AWS_REGION ($RUNS_ON_STACK_NAME, pool $RUNS_ON_POOL_NAME)"
+      - run: echo "pool job on $RUNS_ON_INSTANCE_ID in $RUNS_ON_AWS_REGION ($RUNS_ON_STACK_NAME, pool $RUNS_ON_POOL_NAME)"
