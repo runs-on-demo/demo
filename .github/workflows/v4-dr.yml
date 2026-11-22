@@ -1,14 +1,18 @@
 name: v4 dr test
 
-# Throwaway: jobs for the v4 fallback runner fix test (stack
-# runs-on-v4-fbt, env fbt). One push is one run.
+# Throwaway: one job on each of dev's three EC2 pools, after their config
+# moved from a fixed AMI to runner definitions. One push is one run.
 on:
   push:
     branches: [v4-test/dr]
 
 jobs:
   pool:
-    runs-on: runs-on/fleet=fbpool/env=fbt
+    strategy:
+      fail-fast: false
+      matrix:
+        pool: [v4-dev, v4-dev-warm, v4-dev-sticky]
+    runs-on: runs-on/fleet=${{ matrix.pool }}/env=dev
     timeout-minutes: 30
     steps:
-      - run: echo "pool job on $RUNS_ON_INSTANCE_ID in $RUNS_ON_AWS_REGION ($RUNS_ON_STACK_NAME, pool $RUNS_ON_POOL_NAME)"
+      - run: echo "pool job on $RUNS_ON_INSTANCE_ID ($RUNS_ON_STACK_NAME, pool $RUNS_ON_POOL_NAME, image $RUNS_ON_IMAGE_ID $RUNS_ON_AMI_ID)"; grep PRETTY_NAME /etc/os-release
