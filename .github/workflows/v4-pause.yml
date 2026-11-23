@@ -1,0 +1,48 @@
+name: v4 pause
+
+on:
+  push:
+    branches: [v4-test/pause]
+    paths:
+      - .github/workflows/v4-pause.yml
+
+# run: 1
+# What a GitHub Actions job makes of a frozen runner: the runner's processes
+# are stopped for `pause` seconds and its TCP connections are destroyed, as a
+# VM paused on one host and restored on another (new address) would see.
+jobs:
+  freeze:
+    strategy:
+      fail-fast: false
+      matrix:
+        pause: [60, 180, 420, 660, 960]
+    runs-on: runs-on/family=m8a/cpu=2/env=demo
+    timeout-minutes: 30
+    steps:
+      - name: Freeze the runner
+        env:
+          PAUSE: ${{ matrix.pause }}
+        run: |
+          cat > /tmp/freeze.sh <<'S'
+          #!/bin/bash
+          sleep 15
+          pids=$(pgrep -f 'Runner\.(Listener|Worker)')
+          echo "stopping $pids at $(date -u +%T)" > /tmp/freeze.log
+          kill -STOP $pids
+          ss -K -t state established '( dport = :443 )' >> /tmp/freeze.log 2>&1
+          sleep "$1"
+          kill -CONT $pids
+          echo "resumed at $(date -u +%T)" >> /tmp/freeze.log
+          touch /tmp/thawed
+          S
+          chmod +x /tmp/freeze.sh
+          sudo systemd-run --unit=freeze --collect /tmp/freeze.sh "$PAUSE"
+          echo "start $(date -u +%T) pause=$PAUSE"
+          while [ ! -e /tmp/thawed ]; do sleep 5; done
+          sudo cat /tmp/freeze.log
+          sleep 45
+          echo "step end $(date -u +%T)"
+      - name: After
+        run: |
+          curl -fsS -o /dev/null -w 'github %{http_code}\n' https://api.github.com/zen
+          echo "SURVIVED pause=${{ matrix.pause }} at $(date -u +%T)"
