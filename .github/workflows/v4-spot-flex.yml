@@ -1,0 +1,12 @@
+name: v4 spot flex
+
+on:
+  push:
+    branches: [v4-test/spot-host]
+    paths: [.github/workflows/v4-spot-flex.yml]
+
+jobs:
+  flex:
+    runs-on: runs-on/runner=2cpu-linux-x64/env=dev
+    steps:
+      - run: echo "flex job on $(hostname) at $(date -u +%FT%TZ)"
