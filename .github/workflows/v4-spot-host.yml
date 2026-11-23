@@ -1,0 +1,18 @@
+name: v4 spot host
+
+on:
+  push:
+    branches: [v4-test/spot-host]
+    paths: [.github/workflows/v4-spot-host.yml]
+
+jobs:
+  sleep:
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    runs-on: runs-on/fleet=spot-proof/env=dev
+    steps:
+      - run: |
+          echo "job ${{ matrix.n }} attempt $GITHUB_RUN_ATTEMPT on $(hostname) at $(date -u +%FT%TZ)"
+          sleep 900
