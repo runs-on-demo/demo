@@ -1,0 +1,21 @@
+name: RC verify / pool job queued during a restart
+
+# #730: a pool= job queued while the server restarts waits for the pool
+# definitions to load. The server is stopped while this run is queued and
+# started again; the pool is not defined, so once the pools load the job
+# fails with "pool definition does not exist" instead of failing at once.
+on:
+  push:
+    branches-ignore: [master]
+    paths: [rc-verify/v370/pool-restart.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  pool-job:
+    runs-on: runs-on=${{ github.run_id }}/pool=rc370-undefined/env=demo
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - run: echo "ran on $RUNS_ON_INSTANCE_ID"
