@@ -1,0 +1,31 @@
+name: RC verify / burst stats
+
+# Prints start-time stats for the runs listed in rc-verify/v370/stats.txt
+# (one run id per line), so they can be read from one job log.
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v370/stats.txt
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: rc-verify/v370
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in $(grep -E '^[0-9]+' rc-verify/v370/stats.txt); do
+            d=$(mktemp -d)
+            gh api --paginate "repos/${{ github.repository }}/actions/runs/$run/attempts/1/jobs?per_page=100" \
+              --jq '.jobs[]' | jq -s '{jobs:{jobs:.}}' > "$d/a1.json"
+            echo "== run $run"
+            python3 rc-verify/v370/tools/burststats.py "$d"
+          done
