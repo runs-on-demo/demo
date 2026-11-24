@@ -1,14 +1,14 @@
 name: RC verify / v3.6.1 fixes
 
 # End-to-end checks of the fixes merged to main since v3.6.0, on the env=demo
-# stack. Started by a push that touches rc-verify/v361/fixes.txt on a non-main
+# stack. Started by a push that touches rc-verify/v370/fixes.txt on a non-main
 # branch. Each job names the monorepo PR it checks.
 on:
   workflow_dispatch:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/fixes.txt
+      - rc-verify/v370/fixes.txt
 
 permissions:
   contents: read

@@ -3,13 +3,13 @@ name: RC verify / hot pool burst (#715)
 # 60 jobs at once on the rc-pool-demo hot pool (runs-on-demo/.github-private,
 # set hot: 60 before the run and back to 0 after). Each pick should reuse a
 # shared pool listing, and no instance may serve two jobs. Started by a push
-# that touches rc-verify/v361/pool.txt on a non-main branch.
+# that touches rc-verify/v370/pool.txt on a non-main branch.
 on:
   workflow_dispatch:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/pool.txt
+      - rc-verify/v370/pool.txt
 
 permissions:
   contents: read

@@ -4,13 +4,13 @@ name: RC verify / forged Spot interruption (#702)
 # then fails. Since #702 the tag only counts on Spot instances, so RunsOn
 # must not rerun this job once the run completes (check the run's attempts a
 # few minutes after it ends). Started by a push that touches
-# rc-verify/v361/forged-interrupt.txt on a non-main branch.
+# rc-verify/v370/forged-interrupt.txt on a non-main branch.
 on:
   workflow_dispatch:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/forged-interrupt.txt
+      - rc-verify/v370/forged-interrupt.txt
 
 permissions:
   contents: read

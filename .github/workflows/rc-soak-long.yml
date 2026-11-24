@@ -1,0 +1,114 @@
+name: RC verify / long soak wave
+
+# One wave of a multi-hour soak: a sandbox loop pushes rc-verify/v370/soak-long.txt
+# every few minutes, and each push starts one run. Waves overlap. A wave is 32
+# Flex jobs (env=demo) and 32 Fleet jobs (second line of the file, default
+# dev-crohr) across x64, arm64 and Windows, each lasting 3 to 10 minutes.
+# Linux jobs check out the repository, restore a 64 MiB Magic Cache entry
+# seeded by the wave, install a package and burn CPU.
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v370/soak-long.txt
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      fleet_env: ${{ steps.p.outputs.fleet_env }}
+      flex: ${{ steps.p.outputs.flex }}
+      fleet: ${{ steps.p.outputs.fleet }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: rc-verify/v370
+      - id: p
+        run: |
+          env=$(sed -n 2p rc-verify/v370/soak-long.txt | tr -d '[:space:]'); echo "fleet_env=${env:-dev-crohr}" >> "$GITHUB_OUTPUT"
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          flex_kinds = ["runner=2cpu-linux-x64", "runner=2cpu-linux-arm64", "runner=4cpu-linux-x64",
+                        "family=m8a.large/extras=tmpfs", "runner=4cpu-linux-arm64", "family=c7i+c7a+m7i+m7a/cpu=2",
+                        "runner=2cpu-linux-x64/image=ubuntu26-full-x64", "runner=2cpu-linux-arm64/image=ubuntu26-full-arm64"]
+          flex = [{"n": i, "kind": flex_kinds[i % len(flex_kinds)], "os": "linux"} for i in range(30)]
+          flex += [{"n": 30 + i, "kind": "family=m7i+m7a+m6i/ram=8/image=windows25-full-x64", "os": "windows"} for i in range(2)]
+          fleet_kinds = ["baseline", "memory-burst", "arm64", "baseline", "arm64"]
+          fleet = [{"n": i, "kind": fleet_kinds[i % len(fleet_kinds)], "os": "linux"} for i in range(30)]
+          fleet += [{"n": 30 + i, "kind": "windows", "os": "windows"} for i in range(2)]
+          print("flex=" + json.dumps({"include": flex}))
+          print("fleet=" + json.dumps({"include": fleet}))
+          PY
+
+  flex-seed:
+    runs-on: runs-on=${{ github.run_id }}-seed/runner=2cpu-linux-x64/env=demo
+    steps:
+      - run: mkdir -p blob && head -c 67108864 /dev/urandom > blob/data && sha256sum blob/data > blob.sha
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-long-${{ github.run_id }}
+
+  fleet-seed:
+    needs: plan
+    runs-on: runs-on/fleet=memory-burst/env=${{ needs.plan.outputs.fleet_env }}
+    steps:
+      - run: mkdir -p blob && head -c 67108864 /dev/urandom > blob/data && sha256sum blob/data > blob.sha
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-long-${{ github.run_id }}
+
+  flex:
+    needs: [plan, flex-seed]
+    name: flex ${{ matrix.n }} ${{ matrix.kind }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.flex) }}
+    runs-on: runs-on=${{ github.run_id }}/${{ matrix.kind }}/env=demo
+    timeout-minutes: 30
+    steps: &work
+      - uses: actions/checkout@v5
+      - uses: actions/cache/restore@v4
+        if: runner.os == 'Linux'
+        with:
+          path: |
+            blob
+            blob.sha
+          key: rc-soak-long-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Work (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          echo "runner=$RUNNER_NAME instance=${RUNS_ON_INSTANCE_TYPE:-?} az=${RUNS_ON_AWS_AZ:-?} arch=$(uname -m)"
+          sha256sum -c blob.sha
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          total=$((180 + RANDOM % 420)); burn=$((total / 3))
+          timeout "$burn" bash -c 'for c in $(seq $(nproc)); do (while :; do sha256sum blob/data >/dev/null; done) & done; wait' || true
+          sleep $((total - burn))
+      - name: Work (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Output "runner=$env:RUNNER_NAME instance=$env:RUNS_ON_INSTANCE_TYPE az=$env:RUNS_ON_AWS_AZ"
+          $total = Get-Random -Minimum 180 -Maximum 600
+          $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt ($total / 3)) { $null = 1..1000 | ForEach-Object { $_ * $_ } }
+          Start-Sleep -Seconds ([int]($total * 2 / 3))
+
+  fleet:
+    needs: [plan, fleet-seed]
+    name: fleet ${{ matrix.n }} ${{ matrix.kind }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.fleet) }}
+    runs-on: runs-on/fleet=${{ matrix.kind }}/env=${{ needs.plan.outputs.fleet_env }}
+    timeout-minutes: 30
+    steps: *work

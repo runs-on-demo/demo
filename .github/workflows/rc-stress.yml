@@ -7,7 +7,7 @@ on:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/stress.txt
+      - rc-verify/v370/stress.txt
 
 permissions:
   contents: read

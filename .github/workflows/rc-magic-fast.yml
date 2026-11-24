@@ -8,7 +8,7 @@ on:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/magic-fast.txt
+      - rc-verify/v370/magic-fast.txt
 
 permissions:
   contents: read

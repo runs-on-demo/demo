@@ -9,7 +9,7 @@ on:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/quota-exact.txt
+      - rc-verify/v370/quota-exact.txt
 
 permissions:
   contents: read

@@ -1,0 +1,127 @@
+name: RC verify / v3.7.0 changes
+
+# Targeted end-to-end checks of what v3.7.0 changes, on the env=demo Flex stack.
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v370/v370.txt
+
+permissions:
+  contents: read
+
+jobs:
+  # #720: zone= pins a runner to an availability zone, by name or zone ID.
+  zone:
+    name: zone=${{ matrix.zone }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - zone: us-east-1a
+            expect: us-east-1a
+          - zone: use1-az4
+            expect: zone-id:use1-az4
+          - zone: us-east-1b+us-east-1c
+            expect: us-east-1b|us-east-1c
+    runs-on: runs-on=${{ github.run_id }}-zone-${{ strategy.job-index }}/runner=2cpu-linux-x64/zone=${{ matrix.zone }}/env=demo
+    steps:
+      - name: Runner is in the zone
+        run: |
+          set -euo pipefail
+          tok=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
+          az=$(curl -fsS -H "X-aws-ec2-metadata-token: $tok" http://169.254.169.254/latest/meta-data/placement/availability-zone)
+          azid=$(curl -fsS -H "X-aws-ec2-metadata-token: $tok" http://169.254.169.254/latest/meta-data/placement/availability-zone-id)
+          echo "az=$az azid=$azid RUNS_ON_AWS_AZ=${RUNS_ON_AWS_AZ:-}"
+          case "${{ matrix.expect }}" in
+            zone-id:*) test "$azid" = "${{ matrix.expect }}" -o "zone-id:$azid" = "${{ matrix.expect }}" ;;
+            *) echo "$az" | grep -Ex "${{ matrix.expect }}" ;;
+          esac
+
+  # #720: an unknown zone fails the job with a message naming the stack's zones.
+  zone-unknown:
+    name: zone=us-east-1z (expected to fail)
+    continue-on-error: true
+    runs-on: runs-on=${{ github.run_id }}-zone-bad/runner=2cpu-linux-x64/zone=us-east-1z/env=demo
+    steps:
+      - run: exit 1
+
+  # #733: built-in ubuntu26-minimal images boot and run a job.
+  minimal:
+    name: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu26-minimal-x64
+            runner: 2cpu-linux-x64
+          - image: ubuntu26-minimal-arm64
+            runner: 2cpu-linux-arm64
+    runs-on: runs-on=${{ github.run_id }}-${{ matrix.image }}/runner=${{ matrix.runner }}/image=${{ matrix.image }}/env=demo
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          set -eu
+          . /etc/os-release && echo "$PRETTY_NAME"; uname -m
+          test "$VERSION_ID" = "26.04"
+          env | grep -E '^RUNS_ON_(IMAGE|INSTANCE_TYPE|AWS_AZ)=' || true
+
+  # #703: sticky disks (isolation now on by default) keep data from one job to the next.
+  sticky-write:
+    runs-on: runs-on=${{ github.run_id }}-sticky1/runner=2cpu-linux-x64/sticky=rc370-${{ github.run_id }}-${{ github.run_attempt }}:10gb/env=demo
+    steps:
+      - run: |
+          set -euo pipefail
+          test -d "$RUNS_ON_STICKYDISK_DIR"
+          echo "${{ github.run_id }}" | sudo tee "$RUNS_ON_STICKYDISK_DIR/marker"
+          df -h "$RUNS_ON_STICKYDISK_DIR"
+  sticky-read:
+    needs: sticky-write
+    runs-on: runs-on=${{ github.run_id }}-sticky2/runner=2cpu-linux-x64/sticky=rc370-${{ github.run_id }}-${{ github.run_attempt }}:10gb/env=demo
+    steps:
+      - run: |
+          set -euo pipefail
+          cat "$RUNS_ON_STICKYDISK_DIR/marker"
+          test "$(cat "$RUNS_ON_STICKYDISK_DIR/marker")" = "${{ github.run_id }}"
+
+  # #744: on a 16 GiB Ubuntu 26 runner (zram), an incompressible memory hog is
+  # killed and the runner survives instead of freezing.
+  oom-16g:
+    name: OOM on 16 GiB (${{ matrix.family }})
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [m8a.xlarge, m8g.xlarge]
+    runs-on: runs-on=${{ github.run_id }}-oom16-${{ matrix.family }}/family=${{ matrix.family }}/image=ubuntu26-full-${{ startsWith(matrix.family, 'm8g') && 'arm64' || 'x64' }}/env=demo
+    timeout-minutes: 20
+    steps:
+      - name: Allocate past RAM
+        id: alloc
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          free -m; swapon --show || true
+          python3 - <<'PY'
+          import os
+          chunk = os.urandom(64 << 20)
+          held = []
+          while True:
+              held.append(chunk * 4)
+              print(len(held) * 256, "MiB", flush=True)
+          PY
+      - name: Runner still alive
+        if: always()
+        run: |
+          test "${{ steps.alloc.outcome }}" = failure
+          sudo dmesg | grep -iE 'out of memory|killed process|memory-stall' | tail -5 || true
+          uptime; free -m
+
+  # #736: Windows Server 2025 runner starts and runs a job.
+  windows:
+    runs-on: runs-on=${{ github.run_id }}-win/family=m7i+m7a+m6i/ram=8/image=windows25-full-x64/env=demo
+    steps:
+      - uses: actions/checkout@v5
+      - shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          Get-ChildItem env: | Where-Object { $_.Name -like 'RUNS_ON_*' -and $_.Name -notmatch 'TOKEN|SECRET|KEY' } | Format-Table -AutoSize

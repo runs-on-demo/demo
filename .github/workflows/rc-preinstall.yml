@@ -3,13 +3,13 @@ name: RC verify / preinstall (#699, #701)
 # Needs the rc-preinstall runner in runs-on-demo/.github-private: ubuntu24,
 # extras=tmpfs, and a preinstall that adds an 8 GiB swap file and dumps the
 # environment its child processes see. Started by a push that touches
-# rc-verify/v361/preinstall.txt on a non-main branch.
+# rc-verify/v370/preinstall.txt on a non-main branch.
 on:
   workflow_dispatch:
   push:
     branches-ignore: [master]
     paths:
-      - rc-verify/v361/preinstall.txt
+      - rc-verify/v370/preinstall.txt
 
 permissions:
   contents: read

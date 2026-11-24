@@ -1,0 +1,125 @@
+name: RC verify / mixed fan-out
+
+# Matrix fan-out across platforms, queued at once (no max-parallel): x64,
+# arm64, Windows and the ubuntu26-minimal images on Flex (env=demo), and x64,
+# arm64 and Windows pools on Fleet (dev stack). Every job must start and pass.
+# The first line of rc-verify/v370/mix.txt picks: flex, fleet or both.
+# The second line (optional) is the Fleet env (default dev-crohr).
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - rc-verify/v370/mix.txt
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      flex: ${{ steps.p.outputs.flex }}
+      fleet: ${{ steps.p.outputs.fleet }}
+      fleet_env: ${{ steps.p.outputs.fleet_env }}
+      flex_matrix: ${{ steps.p.outputs.flex_matrix }}
+      fleet_matrix: ${{ steps.p.outputs.fleet_matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: rc-verify/v370
+      - id: p
+        run: |
+          target=$(sed -n 1p rc-verify/v370/mix.txt | tr -d '[:space:]')
+          env=$(sed -n 2p rc-verify/v370/mix.txt | tr -d '[:space:]'); env=${env:-dev-crohr}
+          case "$target" in flex|both) echo flex=true >> "$GITHUB_OUTPUT";; esac
+          case "$target" in fleet|both) echo fleet=true >> "$GITHUB_OUTPUT";; esac
+          echo "fleet_env=$env" >> "$GITHUB_OUTPUT"
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          flex = (
+              [{"kind": "x64", "label": "runner=2cpu-linux-x64", "os": "linux", "n": i} for i in range(150)]
+              + [{"kind": "arm64", "label": "runner=2cpu-linux-arm64", "os": "linux", "n": i} for i in range(100)]
+          )
+          flex2 = (
+              [{"kind": "win25", "label": "family=m7i+m7a+m6i/ram=8/image=windows25-full-x64", "os": "windows", "n": i} for i in range(20)]
+              + [{"kind": "u26min-x64", "label": "runner=2cpu-linux-x64/image=ubuntu26-minimal-x64", "os": "minimal", "n": i} for i in range(15)]
+              + [{"kind": "u26min-arm64", "label": "runner=2cpu-linux-arm64/image=ubuntu26-minimal-arm64", "os": "minimal", "n": i} for i in range(15)]
+          )
+          fleet = (
+              [{"kind": "baseline", "os": "linux", "n": i} for i in range(150)]
+              + [{"kind": "arm64", "os": "linux", "n": i} for i in range(100)]
+          )
+          fleet2 = [{"kind": "windows", "os": "windows", "n": i} for i in range(20)]
+          print("flex_matrix=" + json.dumps({"a": {"include": flex}, "b": {"include": flex2}}))
+          print("fleet_matrix=" + json.dumps({"a": {"include": fleet}, "b": {"include": fleet2}}))
+          PY
+
+  flex-a:
+    needs: plan
+    if: needs.plan.outputs.flex == 'true'
+    name: flex ${{ matrix.kind }} ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.flex_matrix).a }}
+    runs-on: runs-on=${{ github.run_id }}/${{ matrix.label }}/env=demo
+    timeout-minutes: 30
+    steps: &linux
+      - uses: actions/checkout@v5
+      - name: Work
+        run: |
+          set -euo pipefail
+          echo "runner=$RUNNER_NAME instance=${RUNS_ON_INSTANCE_TYPE:-?} az=${RUNS_ON_AWS_AZ:-?} arch=$(uname -m)"
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq hello >/dev/null && hello
+          timeout 60 bash -c 'for c in $(seq $(nproc)); do (while :; do :; done) & done; wait' || true
+          sleep 60
+
+  flex-b:
+    needs: plan
+    if: needs.plan.outputs.flex == 'true'
+    name: flex ${{ matrix.kind }} ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.flex_matrix).b }}
+    runs-on: runs-on=${{ github.run_id }}/${{ matrix.label }}/env=demo
+    timeout-minutes: 30
+    steps: &mixed
+      - uses: actions/checkout@v5
+      - name: Work (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          echo "runner=$RUNNER_NAME instance=${RUNS_ON_INSTANCE_TYPE:-?} az=${RUNS_ON_AWS_AZ:-?} arch=$(uname -m)"
+          . /etc/os-release && echo "$PRETTY_NAME"
+          timeout 60 bash -c 'for c in $(seq $(nproc)); do (while :; do :; done) & done; wait' || true
+          sleep 60
+      - name: Work (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Output "runner=$env:RUNNER_NAME instance=$env:RUNS_ON_INSTANCE_TYPE az=$env:RUNS_ON_AWS_AZ"
+          [System.Environment]::OSVersion.VersionString
+          git --version
+          $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.Elapsed.TotalSeconds -lt 60) { $null = 1..1000 | ForEach-Object { $_ * $_ } }
+          Start-Sleep -Seconds 60
+
+  fleet-a:
+    needs: plan
+    if: needs.plan.outputs.fleet == 'true'
+    name: fleet ${{ matrix.kind }} ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.fleet_matrix).a }}
+    runs-on: runs-on/fleet=${{ matrix.kind }}/env=${{ needs.plan.outputs.fleet_env }}
+    timeout-minutes: 30
+    steps: *linux
+
+  fleet-b:
+    needs: plan
+    if: needs.plan.outputs.fleet == 'true'
+    name: fleet ${{ matrix.kind }} ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.fleet_matrix).b }}
+    runs-on: runs-on/fleet=${{ matrix.kind }}/env=${{ needs.plan.outputs.fleet_env }}
+    timeout-minutes: 30
+    steps: *mixed
