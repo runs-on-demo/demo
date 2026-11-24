@@ -32,6 +32,12 @@ jobs:
           sudo apt-get install -y -q --reinstall jq | tail -1
           curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 400; echo
           echo "PROOF flex done"
+      - name: the license host answers the controller's request
+        run: |
+          body='{"org":"runs-on-demo","region":"us-east-1","license_key":"proof-not-a-key","app_version":"v4-proof"}'
+          for u in https://licensing.runs-on.com/validate https://runs-on.com/api/licenses/validate; do
+            echo "PROOF license $u: $(curl -sS --max-time 10 -o /tmp/out -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$body" "$u") $(head -c 300 /tmp/out)"
+          done
   pool:
     runs-on: runs-on/fleet=v4-dev/env=dev
     steps:
