@@ -1,0 +1,27 @@
+name: RC verify / v3.7.0 end to end
+
+on:
+  push:
+    branches-ignore: [master]
+    paths: [rc-verify/v370/e2e.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  # #729: when launches fail, the fallback runner prints the AWS error by
+  # service, operation and code, without AWS's message (account, role, ids).
+  fallback-error:
+    name: fallback error (${{ matrix.name }}, expected to fail)
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: missing AMI
+            extra: ami=ami-0000000000000000f
+          - name: 1 GB root volume
+            extra: volume=1gb
+    runs-on: runs-on=${{ github.run_id }}-fallback-${{ strategy.job-index }}/runner=2cpu-linux-x64/${{ matrix.extra }}/env=demo
+    steps:
+      - run: exit 0

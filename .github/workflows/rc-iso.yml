@@ -1,0 +1,68 @@
+name: RC verify / cache isolation by scope
+
+# #703: with cache isolation on (the v3.7 default), a pull request cannot read
+# entries its head branch saved on push. The push run saves a key and reads it
+# back on another runner; the pull_request run looks the same key up and must miss.
+on:
+  push:
+    branches-ignore: [master]
+    paths: [rc-verify/v370/iso.txt]
+  pull_request:
+    paths: [rc-verify/v370/iso.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  save:
+    if: github.event_name == 'push'
+    name: save (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [flex, fleet]
+    runs-on: ${{ matrix.target == 'flex' && format('runs-on={0}-iso-save/runner=2cpu-linux-x64/extras=s3-cache/env=demo', github.run_id) || 'runs-on/fleet=baseline/env=dev-crohr' }}
+    steps:
+      - run: mkdir -p iso && echo "${{ github.sha }}" > iso/marker
+      - uses: actions/cache/save@v4
+        with:
+          path: iso
+          key: rc370-iso-${{ matrix.target }}-${{ github.sha }}
+
+  read-back:
+    if: github.event_name == 'push'
+    needs: save
+    name: same branch reads it (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [flex, fleet]
+    runs-on: ${{ matrix.target == 'flex' && format('runs-on={0}-iso-read/runner=2cpu-linux-x64/extras=s3-cache/env=demo', github.run_id) || 'runs-on/fleet=baseline/env=dev-crohr' }}
+    steps:
+      - id: r
+        uses: actions/cache/restore@v4
+        with:
+          path: iso
+          key: rc370-iso-${{ matrix.target }}-${{ github.sha }}
+      - run: |
+          test "${{ steps.r.outputs.cache-hit }}" = true
+          test "$(cat iso/marker)" = "${{ github.sha }}"
+
+  pr-cannot-read:
+    if: github.event_name == 'pull_request'
+    name: pull request cannot read the branch's entry (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [flex, fleet]
+    runs-on: ${{ matrix.target == 'flex' && format('runs-on={0}-iso-pr/runner=2cpu-linux-x64/extras=s3-cache/env=demo', github.run_id) || 'runs-on/fleet=baseline/env=dev-crohr' }}
+    steps:
+      - id: r
+        uses: actions/cache/restore@v4
+        with:
+          path: iso
+          key: rc370-iso-${{ matrix.target }}-${{ github.event.pull_request.head.sha }}
+      - run: |
+          echo "cache-hit=${{ steps.r.outputs.cache-hit }}"
+          test "${{ steps.r.outputs.cache-hit }}" != true
+          test ! -e iso/marker
