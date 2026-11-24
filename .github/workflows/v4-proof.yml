@@ -1,4 +1,5 @@
 # v4 proof of the security hardening (monorepo 3576fc0) and the sticky late bind, on runs-on-v4-dev.
+# Every job collects its PROOF lines in an output; the report job prints them all.
 name: v4 proof
 
 on:
@@ -8,17 +9,17 @@ on:
 jobs:
   flex:
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/env=dev/extras=s3-cache+git-cache+apt-cache
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
     steps:
       - uses: actions/checkout@v4
-      - run: env | grep -E '^ACTIONS_CACHE_URL|^ACTIONS_RESULTS_URL|^RUNS_ON_S3_BUCKET_CACHE|^RUNS_ON_INSTANCE_TYPE|^RUNS_ON_RUNNER_NAME' | sed -E 's/(URL|CACHE)=.*/\1=set/' | sort
       - id: restore
         uses: actions/cache/restore@v4
         with:
           path: blob
           key: v4-proof-flex-${{ github.ref_name }}
       - run: |
-          echo "cache hit: ${{ steps.restore.outputs.cache-hit }}"
-          if [ -f blob/data ]; then echo "restored from run $(cat blob/run)"; fi
+          echo "PROOF on $RUNS_ON_INSTANCE_TYPE $RUNS_ON_RUNNER_NAME; cache hit: ${{ steps.restore.outputs.cache-hit }}; restored from run $(cat blob/run 2>/dev/null || echo none)" | tee -a /tmp/proof
           mkdir -p blob && head -c 20000000 /dev/urandom > blob/data && echo "${{ github.run_id }}" > blob/run
       - if: steps.restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -27,93 +28,109 @@ jobs:
           key: v4-proof-flex-${{ github.ref_name }}
       - run: |
           git clone -q https://github.com/runs-on/action /tmp/action && git -C /tmp/action log -1 --format=%h
-          curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 400; echo
+          echo "PROOF git-cache $(curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 300)" | tee -a /tmp/proof
           sudo apt-get update -q | tail -2
           sudo apt-get install -y -q --reinstall jq | tail -1
-          curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 400; echo
-          echo "PROOF flex done"
+          echo "PROOF apt-cache $(curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 300)" | tee -a /tmp/proof
       - name: the license host answers the controller's request
         run: |
           body='{"org":"runs-on-demo","region":"us-east-1","license_key":"proof-not-a-key","app_version":"v4-proof"}'
           for u in https://licensing.runs-on.com/validate https://runs-on.com/api/licenses/validate; do
-            echo "PROOF license $u: $(curl -sS --max-time 10 -o /tmp/out -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$body" "$u") $(head -c 300 /tmp/out)"
+            echo "PROOF license $u: $(curl -sS --max-time 10 -o /tmp/out -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$body" "$u") $(head -c 300 /tmp/out)" | tee -a /tmp/proof
           done
+      - &proof
+        id: proof
+        if: always()
+        run: |
+          { echo "lines<<PROOF_EOF"; cat /tmp/proof 2>/dev/null || echo "no proof lines"; echo PROOF_EOF; } >> "$GITHUB_OUTPUT"
   pool:
     runs-on: runs-on/fleet=v4-dev/env=dev
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
     steps:
-      - run: echo "PROOF pool job on $RUNS_ON_INSTANCE_TYPE ($RUNS_ON_INSTANCE_LIFECYCLE) $RUNS_ON_RUNNER_NAME"
+      - run: echo "PROOF pool job on $RUNS_ON_INSTANCE_TYPE ($RUNS_ON_INSTANCE_LIFECYCLE) $RUNS_ON_RUNNER_NAME" | tee -a /tmp/proof
+      - *proof
   # Both must fail fast, with an error naming runs-on/fleet=v4-dev/env=dev.
   refused-pool:
     runs-on: runs-on/pool=v4-dev/env=dev
     steps:
-      - run: echo "PROOF BUG a pool= job ran"
+      - run: echo "BUG a pool= job ran"
   refused-pool-run-id:
     runs-on: runs-on=${{ github.run_id }}/pool=v4-dev/env=dev
     steps:
-      - run: echo "PROOF BUG a pool= job ran"
+      - run: echo "BUG a pool= job ran"
   sticky-flex:
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/env=dev/sticky=proof:10gb
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
     steps: &sticky
       - run: |
           d=/mnt/runs-on/stickydisk
           # As runs-on/action does: the disk follows the job's start.
           for i in $(seq 300); do [ -e /runs-on/stickydisk.ready ] || [ -e /runs-on/stickydisk.unavailable ] && break; sleep 1; done
-          echo "PROOF sticky waited ${i}s"; ls /runs-on/ | grep -i sticky || echo "no sticky marker"
-          cat /runs-on/stickydisk.unavailable 2>/dev/null || true
-          mountpoint "$d" && df -h "$d" | tail -1
           n=$(cat "$d/count" 2>/dev/null || echo 0)
-          echo "PROOF sticky previous count: $n (ref ${GITHUB_REF})"
+          echo "PROOF sticky on $RUNS_ON_RUNNER_NAME: waited ${i}s, markers $(ls /runs-on/ | grep -i sticky | tr '\n' ' '), unavailable: $(cat /runs-on/stickydisk.unavailable 2>/dev/null | head -c 200), mounted: $(mountpoint -q "$d" && echo yes || echo no), previous count $n, ref ${GITHUB_REF}" | tee -a /tmp/proof
           echo $((n+1)) | sudo tee "$d/count" >/dev/null
           echo "run ${GITHUB_RUN_NUMBER} job ${GITHUB_JOB} on $(hostname)" | sudo tee -a "$d/history" >/dev/null
-          cat "$d/history" | tail -5
+          echo "PROOF sticky history: $(tail -4 "$d/history" | tr '\n' ';')" | tee -a /tmp/proof
           sleep 5
+      - *proof
   sticky-pool:
     runs-on: runs-on/fleet=v4-dev-sticky/env=dev
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
     steps: *sticky
-  guest:
-    strategy:
-      matrix:
-        n: [1, 2]
+  guest-a:
     runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
-    steps:
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
+    steps: &guest
       - run: |
-          echo "PROOF guest $(hostname) $RUNS_ON_RUNNER_NAME"; ip -4 -o addr show scope global; ip route
-          echo "out: $(curl -4 -sS --max-time 15 https://checkip.amazonaws.com)"
-          echo "dns: $(getent hosts github.com | head -1)"
-          cat /etc/resolv.conf | grep nameserver
-          curl -sf --max-time 3 http://169.254.169.254/ >/dev/null && echo "mmds without token: open" || echo "mmds without token: refused"
+          echo "PROOF guest $RUNS_ON_RUNNER_NAME type ${RUNS_ON_INSTANCE_TYPE:-none} kernel $(uname -r) addr $(ip -4 -o addr show scope global | awk '{print $2 "=" $4}' | tr '\n' ' ') gw $(ip route | awk '/default/ {print $3}')" | tee -a /tmp/proof
+          echo "PROOF out: $(curl -4 -sS --max-time 15 https://checkip.amazonaws.com); dns: $(getent hosts github.com | head -1); resolvers: $(grep nameserver /etc/resolv.conf | tr '\n' ' ')" | tee -a /tmp/proof
+          curl -sf --max-time 3 http://169.254.169.254/ >/dev/null && echo "PROOF mmds without token: open" | tee -a /tmp/proof || echo "PROOF mmds without token: refused" | tee -a /tmp/proof
       - id: restore
         uses: actions/cache/restore@v4
         with:
           path: blob
-          key: v4-proof-guest-${{ matrix.n }}-${{ github.ref_name }}
+          key: v4-proof-${{ github.job }}-${{ github.ref_name }}
       - run: |
-          echo "cache hit: ${{ steps.restore.outputs.cache-hit }}"
-          if [ -f blob/data ]; then echo "restored from run $(cat blob/run)"; fi
+          echo "PROOF cache hit: ${{ steps.restore.outputs.cache-hit }}; restored from run $(cat blob/run 2>/dev/null || echo none)" | tee -a /tmp/proof
           mkdir -p blob && head -c 20000000 /dev/urandom > blob/data && echo "${{ github.run_id }}" > blob/run
       - if: steps.restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: blob
-          key: v4-proof-guest-${{ matrix.n }}-${{ github.ref_name }}
+          key: v4-proof-${{ github.job }}-${{ github.ref_name }}
       - run: |
-          curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 300; echo
-          curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 300; echo
+          git clone -q https://github.com/runs-on/action /tmp/action && git -C /tmp/action log -1 --format=%h
+          echo "PROOF git-cache $(curl -s http://127.0.0.1:6871/_runs-on/git-cache | head -c 300)" | tee -a /tmp/proof
           sudo apt-get update -q | tail -1
+          sudo apt-get install -y -q --reinstall jq | tail -1
+          echo "PROOF apt-cache $(curl -s http://127.0.0.1:6871/_runs-on/apt-cache | head -c 300)" | tee -a /tmp/proof
       - name: siblings and the host must not answer
         run: |
           me=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1)
-          gw=$(ip route | awk '/default/ {print $3}')
-          echo "me $me gw $gw"
-          sleep 20 # let the other guest of the matrix boot
-          open=""
-          for i in $(seq 1 62); do
-            ip=172.16.0.$i; [ "$ip" = "$me" ] && continue
-            ping -c1 -W1 "$ip" >/dev/null 2>&1 && open="$open $ip(ping)"
-            timeout 1 bash -c "echo > /dev/tcp/$ip/22" 2>/dev/null && open="$open $ip(ssh)"
+          sleep 25 # the other guest job boots meanwhile
+          probe() { ip=$1; ping -c1 -W2 "$ip" >/dev/null 2>&1 && echo "$ip(ping)"; timeout 2 bash -c "echo > /dev/tcp/$ip/22" 2>/dev/null && echo "$ip(tcp22)"; timeout 2 bash -c "echo > /dev/tcp/$ip/6871" 2>/dev/null && echo "$ip(tcp6871)"; true; }
+          export -f probe
+          open=$(seq 1 126 | sed 's/^/172.16.0./' | grep -vx "$me" | xargs -P 64 -I{} bash -c 'probe {}' | sort -V | tr '\n' ' ')
+          echo "PROOF answering in 172.16.0.0/25 besides me ($me): ${open:-none}" | tee -a /tmp/proof
+          for t in 10.1.0.2:53 10.1.0.1:22 169.254.169.253:53 169.254.169.254:80; do
+            timeout 2 bash -c "echo > /dev/tcp/${t%:*}/${t#*:}" 2>/dev/null && echo "PROOF $t open" | tee -a /tmp/proof || echo "PROOF $t closed" | tee -a /tmp/proof
           done
-          echo "PROOF answering in 172.16.0.0/26 besides me: ${open:-none}"
-          for ip in 10.1.0.2 10.1.0.1 169.254.169.253; do
-            timeout 2 bash -c "echo > /dev/tcp/$ip/53" 2>/dev/null && echo "PROOF $ip:53 open" || echo "PROOF $ip:53 closed"
-          done
-          echo "PROOF guest done"
+      - *proof
+  guest-b:
+    runs-on: runs-on/fleet=v4-dev-hosts-kvm/env=dev
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
+    steps: *guest
+  report:
+    needs: [flex, pool, refused-pool, refused-pool-run-id, sticky-flex, sticky-pool, guest-a, guest-b]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "== \(.key): \(.value.result)\n\(.value.outputs.lines // "")"'
