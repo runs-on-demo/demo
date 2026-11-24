@@ -1,0 +1,22 @@
+name: RC verify / transient spec error gives up
+
+# #734: a launch whose spec error is transient and never clears fails the job
+# on a fallback runner after 20 waits (at least 10 minutes), instead of staying
+# queued until GitHub cancels it. The AMI id below makes DescribeImages answer
+# `Invalid id: "ami-EOF"`, which RunsOn's transient-error check reads as an EOF.
+on:
+  push:
+    branches-ignore: [master]
+    paths: [rc-verify/v370/transient.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  never-clears:
+    name: transient spec error (expected to fail after about 10 min)
+    continue-on-error: true
+    timeout-minutes: 40
+    runs-on: runs-on=${{ github.run_id }}-transient/runner=2cpu-linux-x64/ami=ami-EOF/env=demo
+    steps:
+      - run: exit 0
