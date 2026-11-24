@@ -75,8 +75,15 @@ jobs:
           test -d "$RUNS_ON_STICKYDISK_DIR"
           echo "${{ github.run_id }}" | sudo tee "$RUNS_ON_STICKYDISK_DIR/marker"
           df -h "$RUNS_ON_STICKYDISK_DIR"
-  sticky-read:
+  # Only completed snapshots are restorable: a job that starts while the
+  # writer's snapshot is pending restores the lineage's previous one.
+  sticky-wait:
     needs: sticky-write
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 300
+  sticky-read:
+    needs: sticky-wait
     runs-on: runs-on=${{ github.run_id }}-sticky2/runner=2cpu-linux-x64/sticky=rc370-${{ github.run_id }}-${{ github.run_attempt }}:10gb/env=demo
     steps:
       - run: |

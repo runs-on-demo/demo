@@ -1,0 +1,40 @@
+name: RC verify / v3.7.0 Fleet end to end
+
+# Fleet dev stack (env=dev-crohr) with a temporary "zoned" fleet whose runner
+# sets zone=us-east-1b and custom tags, and its control plane moved to its own
+# private subnets and security group (#746, #750).
+on:
+  push:
+    branches-ignore: [master]
+    paths: [rc-verify/v370/fleet-e2e.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  # #720: zone in the Fleet runner catalog keeps every runner in that zone.
+  zoned:
+    name: zoned runner ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4]
+    runs-on: runs-on/fleet=zoned/env=dev-crohr
+    steps:
+      - run: |
+          set -euo pipefail
+          tok=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
+          az=$(curl -fsS -H "X-aws-ec2-metadata-token: $tok" http://169.254.169.254/latest/meta-data/placement/availability-zone)
+          echo "az=$az instance=$RUNS_ON_INSTANCE_ID type=$RUNS_ON_INSTANCE_TYPE"
+          test "$az" = us-east-1b
+
+  # #727: runner telemetry carries no host.id; the instance ID stays in service.instance.id.
+  otel:
+    runs-on: runs-on/fleet=baseline/env=dev-crohr
+    steps:
+      - run: |
+          set -euo pipefail
+          f=/runs-on/otel-collector-config.yaml
+          sudo test -f "$f"
+          sudo grep -nE 'host\.(id|name)|service\.instance\.id' "$f" || true
+          ! sudo grep -qE 'host\.id' "$f"
