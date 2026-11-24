@@ -2,9 +2,9 @@ name: RC verify / Spot interruption during job setup
 
 # #749: a Spot interruption that lands while the job is still in "Set up job"
 # fails the job instead of cancelling it, so Fleet reruns it. The temporary
-# setup-interrupt fleet on Fleet dev; "Set up job" pulls a large container
-# action image, which keeps the job in setup for minutes while FIS sends the
-# Spot interruption.
+# setup-interrupt fleet on Fleet dev freezes Runner.Worker while it downloads
+# the job's actions in "Set up job" (first instance only), until the agent's
+# interruption handling sends it SIGTERM.
 on:
   push:
     branches-ignore: [master]
@@ -17,8 +17,8 @@ jobs:
   interrupted-in-setup:
     runs-on: runs-on/fleet=setup-interrupt/env=dev-crohr
     steps:
-      - uses: docker://nvcr.io/nvidia/pytorch:24.10-py3
-        with:
-          entrypoint: /bin/true
+      # Never runs, but "Set up job" downloads it (a large repository).
+      - uses: github/codeql-action/init@v3
+        if: false
       - uses: actions/checkout@v5
       - run: echo "attempt ${{ github.run_attempt }} on $RUNS_ON_INSTANCE_ID"
