@@ -1,0 +1,20 @@
+# v4 proof of the sticky disk's late bind: the job's in_progress delivery is dropped
+# from the dev stack's webhooks queue, and the disk must still come within seconds.
+name: v4 late bind
+
+on:
+  push:
+    branches: ['v4-test/latebind*']
+
+jobs:
+  sticky-flex:
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/env=dev/sticky=proof:10gb
+    steps:
+      - run: |
+          d=/mnt/runs-on/stickydisk
+          start=$(date +%s)
+          for i in $(seq 420); do [ -e /runs-on/stickydisk.ready ] || [ -e /runs-on/stickydisk.unavailable ] && break; sleep 1; done
+          echo "PROOF sticky on $RUNS_ON_RUNNER_NAME: step began $(date -u -d @$start +%T), disk after ${i}s, markers $(ls /runs-on/ | grep -i sticky | tr '\n' ' '), unavailable: $(cat /runs-on/stickydisk.unavailable 2>/dev/null | head -c 200), mounted: $(mountpoint -q "$d" && echo yes || echo no), ref ${GITHUB_REF}"
+          echo "run ${GITHUB_RUN_NUMBER} latebind on $(hostname)" | sudo tee -a "$d/history" >/dev/null
+          echo "PROOF sticky history: $(sudo tail -3 "$d/history" | tr '\n' ';')"
+          sleep 5
