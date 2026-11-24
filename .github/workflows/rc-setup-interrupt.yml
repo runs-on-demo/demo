@@ -1,0 +1,20 @@
+name: RC verify / Spot interruption during job setup
+
+# #749: a Spot interruption that lands while the job is still in "Set up job"
+# fails the job instead of cancelling it, so Fleet reruns it. The temporary
+# setup-interrupt fleet on Fleet dev freezes Runner.Worker during job setup
+# until the agent's interruption handling sends it SIGTERM (first instance only).
+on:
+  push:
+    branches-ignore: [master]
+    paths: [rc-verify/v370/setup-interrupt.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  interrupted-in-setup:
+    runs-on: runs-on/fleet=setup-interrupt/env=dev-crohr
+    steps:
+      - uses: actions/checkout@v5
+      - run: echo "attempt ${{ github.run_attempt }} on $RUNS_ON_INSTANCE_ID"
