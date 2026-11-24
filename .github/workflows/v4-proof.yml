@@ -90,6 +90,7 @@ jobs:
       - run: |
           echo "PROOF guest $RUNS_ON_RUNNER_NAME type ${RUNS_ON_INSTANCE_TYPE:-none} kernel $(uname -r) addr $(ip -4 -o addr show scope global | awk '{print $2 "=" $4}' | tr '\n' ' ') gw $(ip route | awk '/default/ {print $3}')" | tee -a /tmp/proof
           echo "PROOF out: $(curl -4 -sS --max-time 15 https://checkip.amazonaws.com); dns: $(getent hosts github.com | head -1); resolvers: $(grep nameserver /etc/resolv.conf | tr '\n' ' ')" | tee -a /tmp/proof
+          echo "PROOF umask $(umask); systemd $(systemctl is-system-running 2>&1 | head -1); docker $(docker info -f '{{.ServerVersion}}' 2>&1 | head -1 | cut -c1-60); virt $(systemd-detect-virt 2>&1 | head -1)" | tee -a /tmp/proof
           curl -sf --max-time 3 http://169.254.169.254/ >/dev/null && echo "PROOF mmds without token: open" | tee -a /tmp/proof || echo "PROOF mmds without token: refused" | tee -a /tmp/proof
       - id: restore
         uses: actions/cache/restore@v4
@@ -128,8 +129,23 @@ jobs:
     outputs:
       lines: ${{ steps.proof.outputs.lines }}
     steps: *guest
+  nitro-a:
+    runs-on: runs-on/fleet=v4-proof-nitro/env=dev
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
+    steps: *guest
+  nitro-b:
+    runs-on: runs-on/fleet=v4-proof-nitro/env=dev
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
+    steps: *guest
+  nitro-c:
+    runs-on: runs-on/fleet=v4-proof-nitro/env=dev
+    outputs:
+      lines: ${{ steps.proof.outputs.lines }}
+    steps: *guest
   report:
-    needs: [flex, pool, refused-pool, refused-pool-run-id, sticky-flex, sticky-pool, guest-a, guest-b]
+    needs: [flex, pool, refused-pool, refused-pool-run-id, sticky-flex, sticky-pool, guest-a, guest-b, nitro-a, nitro-b, nitro-c]
     if: always()
     runs-on: ubuntu-latest
     steps:
