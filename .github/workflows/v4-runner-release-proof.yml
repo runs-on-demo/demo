@@ -1,0 +1,13 @@
+# Temporary, for runs-on/monorepo#766 on v4: "Set up job" on a Lambda
+# MicroVM of the v4 dev stack shows the runner fork's release (v2.338.2-runs-on.5).
+name: v4 runner release proof
+on:
+  push:
+    branches: [claude/project-thread-almsjd]
+jobs:
+  v4-microvm:
+    runs-on: runs-on=${{ github.run_id }}/family=microvm/env=dev
+    steps:
+      - run: |
+          /home/runner/bin/Runner.Listener --version
+          sudo grep -h "INFO .*RunsOn release:" /home/runner/_diag/*.log || echo "no RunsOn release line in _diag"
